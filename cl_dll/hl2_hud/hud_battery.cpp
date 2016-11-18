@@ -23,11 +23,7 @@
 #include "hud_macros.h"
 #include "parsemsg.h"
 
-#if !defined( HL2_CLIENT_DLL )
 #include "hud_numericdisplay.h"
-#else
-#include "hud_bitmapnumericdisplay.h"
-#endif // HL2_DLL
 
 #include "iclientmode.h"
 
@@ -35,20 +31,18 @@
 
 #define INIT_BAT	-1
 
+#if defined( HL2_CLIENT_DLL )
+#include "ConVar.h"
+extern ConVar hud_enableoldhud;
+#endif
+
+
 //-----------------------------------------------------------------------------
 // Purpose: Displays suit power (armor) on hud
 //-----------------------------------------------------------------------------
-#if !defined( HL2_CLIENT_DLL )
 class CHudBattery : public CHudNumericDisplay, public CHudElement
-#else
-class CHudBattery : public CHudBitmapNumericDisplay, public CHudElement
-#endif // HL2_DLL
 {
-#if !defined( HL2_CLIENT_DLL )
 	DECLARE_CLASS_SIMPLE( CHudBattery, CHudNumericDisplay );
-#else
-	DECLARE_CLASS_SIMPLE( CHudBattery, CHudBitmapNumericDisplay );
-#endif
 
 public:
 	CHudBattery( const char *pElementName );
@@ -71,11 +65,7 @@ DECLARE_HUD_MESSAGE( CHudBattery, Battery );
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
-#if !defined( HL2_CLIENT_DLL )
 CHudBattery::CHudBattery( const char *pElementName ) : BaseClass(NULL, "HudSuit"), CHudElement( pElementName )
-#else
-CHudBattery::CHudBattery( const char *pElementName ) : BaseClass(NULL, "HudSuit2"), CHudElement( pElementName )
-#endif
 {
 }
 
@@ -115,6 +105,20 @@ void CHudBattery::VidInit( void )
 //-----------------------------------------------------------------------------
 void CHudBattery::OnThink( void )
 {
+#if defined( HL2_CLIENT_DLL )
+	if ( hud_enableoldhud.GetBool() )
+	{
+		SetPaintEnabled( false );
+		SetPaintBackgroundEnabled( false );
+		return;
+	}
+	else
+	{
+		SetPaintEnabled(true);
+		SetPaintBackgroundEnabled(true);
+	}
+#endif
+
 	if ( m_iBat == m_iNewBat )
 		return;
 

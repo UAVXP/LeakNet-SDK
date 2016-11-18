@@ -10,41 +10,30 @@
 #include "hud_macros.h"
 #include "parsemsg.h"
 
-#if !defined( HL2_CLIENT_DLL )
 #include "hud_numericdisplay.h"
-#else
-#include "hud_bitmapnumericdisplay.h"
-#endif // HL2_DLL
 
 #include "iclientmode.h"
 
 #include <vgui_controls/AnimationController.h>
 
+#if defined( HL2_CLIENT_DLL )
+#include "ConVar.h"
+extern ConVar hud_enableoldhud;
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: Displays current ammunition level
 //-----------------------------------------------------------------------------
-#if !defined( HL2_CLIENT_DLL )
 class CHudAmmo : public CHudNumericDisplay, public CHudElement
-#else
-class CHudAmmo : public CHudBitmapNumericDisplay, public CHudElement
-#endif // HL2_DLL
 {
-#if !defined( HL2_CLIENT_DLL )
 	DECLARE_CLASS_SIMPLE( CHudAmmo, CHudNumericDisplay );
-#else
-	DECLARE_CLASS_SIMPLE( CHudAmmo, CHudBitmapNumericDisplay );
-#endif // HL2_DLL
 
 public:
 	CHudAmmo( const char *pElementName );
 	void Init( void );
 	void VidInit( void );
 
-#if !defined( HL2_CLIENT_DLL )
 	void SetAmmo(int ammo, bool playAnimation);
-#else
-	void SetAmmo(int ammo, int maxammo, bool playAnimation);
-#endif // HL2_DLL
 	void SetAmmo2(int ammo2, bool playAnimation);
 	
 		
@@ -62,12 +51,7 @@ DECLARE_HUDELEMENT( CHudAmmo );
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
-#if !defined( HL2_CLIENT_DLL )
 CHudAmmo::CHudAmmo( const char *pElementName ) : BaseClass(NULL, "HudAmmo"), CHudElement( pElementName )
-#else
-CHudAmmo::CHudAmmo( const char *pElementName ) : BaseClass(NULL, "HudAmmo2"), CHudElement( pElementName )
-#endif // HL2_DLL
-
 {
 }
 
@@ -96,7 +80,11 @@ void CHudAmmo::OnThink()
 {
 	C_BaseCombatWeapon *wpn = GetActiveWeapon();
 	C_BasePlayer *player = C_BasePlayer::GetLocalPlayer();
-	if (!wpn || !player || !wpn->UsesPrimaryAmmo())
+	if (!wpn || !player || !wpn->UsesPrimaryAmmo() 
+#if defined( HL2_CLIENT_DLL )
+		|| hud_enableoldhud.GetBool()
+#endif
+		)
 	{
 		SetPaintEnabled(false);
 		SetPaintBackgroundEnabled(false);
@@ -126,21 +114,13 @@ void CHudAmmo::OnThink()
 	if (wpn == m_hCurrentActiveWeapon)
 	{
 		// same weapon, just update counts
-#if !defined( HL2_CLIENT_DLL )
 		SetAmmo(ammo1, true);
-#else
-		SetAmmo(ammo1, wpn->GetMaxClip1(), true);
-#endif // HL2_DLL
 		SetAmmo2(ammo2, true);
 	}
 	else
 	{
 		// diferent weapon, change without triggering
-#if !defined( HL2_CLIENT_DLL )
 		SetAmmo(ammo1, false);
-#else
-		SetAmmo(ammo1, wpn->GetMaxClip1(), false);
-#endif // HL2_DLL
 		SetAmmo2(ammo2, false);
 
 		// update whether or not we show the total ammo display
@@ -172,11 +152,7 @@ void CHudAmmo::OnThink()
 //-----------------------------------------------------------------------------
 // Purpose: Updates ammo display
 //-----------------------------------------------------------------------------
-#if !defined( HL2_CLIENT_DLL )
 void CHudAmmo::SetAmmo(int ammo, bool playAnimation)
-#else
-void CHudAmmo::SetAmmo(int ammo, int maxammo, bool playAnimation)
-#endif // HL2_DLL
 {
 	if (ammo != m_iAmmo)
 	{
@@ -198,11 +174,7 @@ void CHudAmmo::SetAmmo(int ammo, int maxammo, bool playAnimation)
 		m_iAmmo = ammo;
 	}
 
-#if !defined( HL2_CLIENT_DLL )
 	SetDisplayValue(ammo);
-#else
-	SetDisplayValue(ammo, maxammo);
-#endif // HL2_DLL
 	
 }
 
@@ -237,33 +209,14 @@ void CHudAmmo::SetAmmo2(int ammo2, bool playAnimation)
 //-----------------------------------------------------------------------------
 // Purpose: Displays the secondary ammunition level
 //-----------------------------------------------------------------------------
-#if !defined( HL2_CLIENT_DLL )
 class CHudSecondaryAmmo : public CHudNumericDisplay, public CHudElement
-#else
-class CHudSecondaryAmmo : public CHudBitmapNumericDisplay, public CHudElement
-#endif // HL2_DLL
-
 {
-#if !defined( HL2_CLIENT_DLL )
 	DECLARE_CLASS_SIMPLE( CHudSecondaryAmmo, CHudNumericDisplay );
-#else
-	DECLARE_CLASS_SIMPLE( CHudSecondaryAmmo, CHudBitmapNumericDisplay );
-#endif // HL2_DLL
-	
 
 public:
-#if !defined( HL2_CLIENT_DLL )
 	CHudSecondaryAmmo( const char *pElementName ) : BaseClass( NULL, "HudAmmoSecondary" ), CHudElement( pElementName )
-#else
-	CHudSecondaryAmmo( const char *pElementName ) : BaseClass( NULL, "HudAmmoSecondary2" ), CHudElement( pElementName )
-#endif // HL2_DLL
-	
 	{
 		m_iAmmo = -1;
-
-#if defined( HL2_CLIENT_DLL )
-		SetLabelText(L"AMMO2");
-#endif // HL2_DLL
 	}
 
 	void Init( void )
@@ -304,7 +257,11 @@ protected:
 		// set whether or not the panel draws based on if we have a weapon that supports secondary ammo
 		C_BaseCombatWeapon *wpn = GetActiveWeapon();
 		C_BasePlayer *player = C_BasePlayer::GetLocalPlayer();
-		if (!wpn || !player)
+		if (!wpn || !player 
+#if defined( HL2_CLIENT_DLL )
+			|| hud_enableoldhud.GetBool()
+#endif
+			)
 		{
 			m_hCurrentActiveWeapon = NULL;
 			SetPaintEnabled(false);

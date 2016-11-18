@@ -38,31 +38,21 @@ using namespace vgui;
 
 #include "hudelement.h"
 
-#if !defined( HL2_CLIENT_DLL )
 #include "hud_numericdisplay.h"
-#else
-#include "hud_bitmapnumericdisplay.h"
-#endif // HL2_DLL
 
-
+#if defined( HL2_CLIENT_DLL )
 #include "ConVar.h"
+extern ConVar hud_enableoldhud;
+#endif
 
 #define INIT_HEALTH -1
 
 //-----------------------------------------------------------------------------
 // Purpose: Health panel
 //-----------------------------------------------------------------------------
-#if !defined( HL2_CLIENT_DLL )
 class CHudHealth : public CHudElement, public CHudNumericDisplay
-#else
-class CHudHealth : public CHudElement, public CHudBitmapNumericDisplay
-#endif
 {
-#if !defined( HL2_CLIENT_DLL )
 	DECLARE_CLASS_SIMPLE( CHudHealth, CHudNumericDisplay );
-#else
-	DECLARE_CLASS_SIMPLE( CHudHealth, CHudBitmapNumericDisplay );
-#endif
 
 public:
 	CHudHealth( const char *pElementName );
@@ -88,12 +78,7 @@ DECLARE_HUD_MESSAGE( CHudHealth, Damage );
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
-#if !defined( HL2_CLIENT_DLL )
 CHudHealth::CHudHealth( const char *pElementName ) : CHudElement( pElementName ), CHudNumericDisplay(NULL, "HudHealth")
-#else
-CHudHealth::CHudHealth( const char *pElementName ) : CHudElement( pElementName ), CHudBitmapNumericDisplay(NULL, "HudHealth2") // VXP: change "HudHealth" to something else to prevent crash at shutdown
-#endif
-
 {
 //	SetHiddenBits( HIDEHUD_HEALTH | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT );
 }
@@ -134,6 +119,20 @@ void CHudHealth::VidInit()
 //-----------------------------------------------------------------------------
 void CHudHealth::OnThink()
 {
+#if defined( HL2_CLIENT_DLL )
+	if ( hud_enableoldhud.GetBool() )
+	{
+		SetPaintEnabled( false );
+		SetPaintBackgroundEnabled( false );
+		return;
+	}
+	else
+	{
+		SetPaintEnabled(true);
+		SetPaintBackgroundEnabled(true);
+	}
+#endif
+
 	int x = 0;
 	C_BasePlayer *local = C_BasePlayer::GetLocalPlayer();
 	if ( local )
