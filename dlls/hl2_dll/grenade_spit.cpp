@@ -62,7 +62,8 @@ void CGrenadeSpit::Spawn( void )
 	m_takedamage	= DAMAGE_YES;
 	m_iHealth		= 1;
 
-	SetGravity( SPIT_GRAVITY );
+//	SetGravity( SPIT_GRAVITY );
+	SetGravity( UTIL_ScaleForGravity( SPIT_GRAVITY ) ); // VXP
 	SetFriction( 0.8 );
 	SetSequence( 1 );
 
@@ -122,7 +123,7 @@ void CGrenadeSpit::GrenadeSpitTouch( CBaseEntity *pOther )
 	}
 	else
 	{
-		RadiusDamage ( CTakeDamageInfo( this, GetOwner(), m_flDamage, DMG_BLAST ), GetAbsOrigin(), m_DmgRadius, CLASS_NONE );
+		RadiusDamage ( CTakeDamageInfo( this, GetOwner(), m_flDamage, DMG_BLAST ), GetAbsOrigin(), m_DmgRadius, CLASS_NONE, NULL );
 	}
 
 	Detonate();

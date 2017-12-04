@@ -20,6 +20,11 @@ using namespace vgui;
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+#if defined( HL2_CLIENT_DLL )
+#include "ConVar.h"
+extern ConVar hud_enableoldhud;
+#endif
+
 DECLARE_HUDELEMENT( CHudSuitPower );
 
 #define SUITPOWER_INIT -1
@@ -55,6 +60,20 @@ void CHudSuitPower::Reset( void )
 //-----------------------------------------------------------------------------
 void CHudSuitPower::OnThink( void )
 {
+#if defined( HL2_CLIENT_DLL )
+	if ( hud_enableoldhud.GetBool() )
+	{
+		SetPaintEnabled( false );
+		SetPaintBackgroundEnabled( false );
+		return;
+	}
+	else
+	{
+		SetPaintEnabled(true);
+		SetPaintBackgroundEnabled(true);
+	}
+#endif
+
 	float flCurrentPower = 0;
 	C_BaseHLPlayer *local = (C_BaseHLPlayer *)C_BasePlayer::GetLocalPlayer();
 	if ( local )

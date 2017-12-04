@@ -79,7 +79,7 @@ CGrenadeHomer* CGrenadeHomer::CreateGrenadeHomer( string_t sModelName, string_t 
 		return NULL;
 	}
 
-	if ( pGrenade->pev )
+	if ( pGrenade->edict() )
 	{
 		pGrenade->m_sFlySound	= sFlySound;
 		pGrenade->SetOwnerEntity( Instance( pentOwner ) );
@@ -350,6 +350,8 @@ void CGrenadeHomer::GrenadeHomerTouch( CBaseEntity *pOther )
 	UTIL_TraceLine( GetAbsOrigin(), GetAbsOrigin() + GetAbsVelocity(),  MASK_SOLID_BRUSHONLY, 
 		this, COLLISION_GROUP_NONE, &tr);
 
+	StopSound(entindex(), CHAN_BODY, STRING(m_sFlySound)); // VXP: Stop sound always, not in just Detonate
+
 	if (tr.surface.flags & SURF_SKY)
 	{
 		StopRocketTrail();
@@ -365,7 +367,7 @@ void CGrenadeHomer::Detonate(void)
 {
 	StopRocketTrail();
 
-	StopSound(entindex(), CHAN_BODY, STRING(m_sFlySound));
+//	StopSound(entindex(), CHAN_BODY, STRING(m_sFlySound));
 
 	m_takedamage	= DAMAGE_NO;	
 
@@ -444,7 +446,7 @@ void CGrenadeHomer::Detonate(void)
 	UTIL_ScreenShake( GetAbsOrigin(), 25.0, 150.0, 1.0, 750, SHAKE_START );
 	CSoundEnt::InsertSound ( SOUND_DANGER, GetAbsOrigin(), 400, 0.2 );
 
-	RadiusDamage ( CTakeDamageInfo( this, GetOwnerEntity(), m_flDamage, DMG_BLAST ), GetAbsOrigin(), m_DmgRadius, CLASS_NONE );
+	RadiusDamage ( CTakeDamageInfo( this, GetOwnerEntity(), m_flDamage, DMG_BLAST ), GetAbsOrigin(), m_DmgRadius, CLASS_NONE, NULL );
 	CPASAttenuationFilter filter2( this, "GrenadeHomer.StopSounds" );
 	EmitSound( filter2, entindex(), "GrenadeHomer.StopSounds" );
 	UTIL_Remove( this );
@@ -491,7 +493,7 @@ void CGrenadeHomer::AimThink( void )
 	// ------------------------------------------------
 	//  If I'm homing
 	// ------------------------------------------------
-	if (m_hTarget != NULL)
+	if (m_hTarget != NULL) // VXP: Shit is going here
 	{
 		vTargetPos		= m_hTarget->EyePosition();
 		vTargetDir		= vTargetPos - GetAbsOrigin();
@@ -506,9 +508,11 @@ void CGrenadeHomer::AimThink( void )
 			Vector  vTravelDir	= GetAbsVelocity();
 			VectorNormalize(vTravelDir);
 			vTravelDir *= 50;
+		//	vTravelDir *= 1; // VXP: Fix for crazy rockets
 
 			trace_t tr;
-			UTIL_TraceLine( GetAbsOrigin(), GetAbsOrigin() + vTravelDir, MASK_SHOT, m_hTarget, COLLISION_GROUP_NONE, &tr );
+		//	UTIL_TraceLine( GetAbsOrigin(), GetAbsOrigin() + vTravelDir, MASK_SHOT, m_hTarget, COLLISION_GROUP_NONE, &tr );
+			UTIL_TraceLine( GetAbsOrigin(), GetAbsOrigin() + vTravelDir, MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
 			if (tr.fraction != 1.0)
 			{
 				// Head off in normal 
@@ -519,9 +523,9 @@ void CGrenadeHomer::AimThink( void )
 				vTargetDir			+= vBounce;
 				VectorNormalize(vTargetDir);
 				// DEBUG TOOL
-				//NDebugOverlay::Line(GetOrigin(), GetOrigin()+vTravelDir, 255,0,0, true, 20);
-				//NDebugOverlay::Line(GetOrigin(), GetOrigin()+(12*tr.plane.normal), 0,0,255, true, 20);
-				//NDebugOverlay::Line(GetOrigin(), GetOrigin()+(vTargetDir), 0,255,0, true, 20);
+				//NDebugOverlay::Line(GetAbsOrigin(), GetAbsOrigin()+vTravelDir, 255,0,0, true, 20);
+				//NDebugOverlay::Line(GetAbsOrigin(), GetAbsOrigin()+(12*tr.plane.normal), 0,0,255, true, 20);
+				//NDebugOverlay::Line(GetAbsOrigin(), GetAbsOrigin()+(vTargetDir), 0,255,0, true, 20);
 			}
 		}
 

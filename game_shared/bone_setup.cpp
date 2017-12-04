@@ -1,8 +1,11 @@
 
+
 #include "tier0/dbg.h"
 #include "mathlib.h"
 #include "bone_setup.h"
+//#include <string> // VXP
 #include <string.h>
+//#include <algorithm> // VXP
 
 #include "collisionutils.h"
 #include "vstdlib/random.h"
@@ -38,11 +41,24 @@ static mstudioanimdesc_t *GetAnimDesc( const studiohdr_t *pStudioHdr, const mstu
 
 	// Get the animation group
 	int iAnimGroup = pSeqDesc->pAnimValue(index1, index2);
+
+//	if( iAnimGroup < 0 || iAnimGroup > pStudioHdr->numanimgroup || pStudioHdr->unused[0] > 0 ) // fire64/VXP: If this is an older model version
+
+	// VXP: Probably a hack, but it works fine
+	if( ( /*iAnimGroup == 0 &&*/ pStudioHdr->numanimgroup == 0 ) || pStudioHdr->unused[0] > 0 )
+	{
+		return pStudioHdr->pAnimdesc(iAnimGroup);
+	}
+
 	Assert(iAnimGroup >= 0 && iAnimGroup < pStudioHdr->numanimgroup);
+//	if ( iAnimGroup < 0 || iAnimGroup >= pStudioHdr->numanimgroup )
+//		return pStudioHdr->pAnimdesc( 0 ); // Fall back to Jesus-pose
 	
 	// Get the sequence group, ensure that it's lower than numseqgroups
 	int iSeqGroup = pStudioHdr->pAnimGroup(iAnimGroup)->group;
 	Assert(iSeqGroup < pStudioHdr->numseqgroups);
+//	if ( iSeqGroup >= pStudioHdr->numseqgroups )
+//		return pStudioHdr->pAnimdesc( 0 ); // Fall back to Jesus-pose
 	
 	// Get the animation index
 	int iAnimIndex = pStudioHdr->pAnimGroup(iAnimGroup)->index;
@@ -3556,18 +3572,279 @@ int Studio_FindRandomAttachment( const studiohdr_t *pStudioHdr, const char *pAtt
 	return -1;
 }
 
+/*
+char* replace_char(char* str, char find, char replace) // VXP: A little helper
+{
+    char *current_pos = strchr(str,find);
+    while (current_pos){
+        *current_pos = replace;
+        current_pos = strchr(current_pos,find);
+    }
+    return str;
+}
+*/
+void replace_char( char *pname, char find, char replace )
+{
+	while ( *pname ) {
+		if ( *pname == find )
+			*pname = replace;
+		pname++;
+	}
+}
+
+
+//char *Studio_TranslateOldBones( const char *boneName )
+/*	// VXP: It should just stay here to remind me of this shitty way of translating bones
+	// and bring to my mind that char* are constant and char[] - are coolest
+void Studio_TranslateOldBones( char boneName[] )
+{
+//	Msg( (!Q_strstr( boneName, "ValveBiped" ) ? "%s is an old bone\n" : "%s is a new bone\n"), boneName );
+//	Msg( ((strchr( boneName, ' ' ) && stricmp(boneName, "Bip01")) ? "%s is an old bone x2\n" : "%s is a new bone x2\n"), boneName ); // VXP: Wrong check
+//	return boneName;
+
+	// Check if Biped skeleton is present too. I was scared when I saw this: http://imgur.com/QVI7grT
+	// If name is not contains Bip01 (bone is not a part of Biped skeleton) - don't do anything
+	if ( Q_stristr( boneName, "Bip01" ) == NULL )
+	{
+	//	return (char *)boneName;
+		return;
+	}
+
+	// If ValveBiped is in name - don't do anything either
+	if ( Q_stristr( boneName, "ValveBiped" ) != NULL ) // Register-independent
+	{
+	//	return (char *)boneName;
+		return;
+	}
+
+	// If name equals only Bip01
+	if ( stricmp(boneName, "Bip01") == 0 ) // VXP: A little hack
+	{
+	//	return "ValveBiped.Bip01_Pelvis";
+	//	return "ValveBiped";
+		strcpy( boneName, "ValveBiped" );
+		return;
+	}
+
+	// VXP: Apparently, this is an old bone
+//	if ( strchr( boneName, ' ' ) != NULL )
+//	if ( !Q_strstr( toReturn, "ValveBiped" ) )
+//	if ( Q_strstr( toReturn, "ValveBiped" ) == NULL )
+
+
+	//	char *toReturn = boneName;
+
+//	char szBuffer[ 128 ];
+//	char *toReturn = NULL;
+//
+//	strcpy( szBuffer, boneName );
+//
+//	toReturn = strrchr( szBuffer,'\0' );
+//	if ( toReturn )
+//	{
+//		*(toReturn+1) = '\0';
+//	}
+
+//	char szBuffer[ 128 ];
+//	char *toReturn;
+//
+//	strcpy( szBuffer, boneName );
+//
+//	toReturn = ( char * )szBuffer;
+
+//	char *toReturn = (char *)boneName;
+	char toReturn[128];
+	strcpy( toReturn, boneName );
+
+//	char *newBoneName = replace_char( toReturn, ' ', '_' );
+//	char *newBoneName = replace_char( toReturn, " ", "_" );
+
+	replace_char( toReturn, ' ', '_' );
+//	char *newBoneName = toReturn;
+	char newBoneName[128];
+	strcpy( newBoneName, toReturn );
+
+//	string s = toReturn;
+//	std::replace( s.begin(), s.end(), ' ', '_'); // replace all ' ' to '_'
+//
+//	//char *newBoneName = &s[0];
+//	// or
+//	char *newBoneName = new char[s.size() + 1];
+//	std::copy(s.begin(), s.end(), newBoneName);
+//	newBoneName[s.size()] = '\0'; // don't forget the terminating 0
+
+	if ( newBoneName != NULL )
+	{
+		// VXP: Trying to add a "ValveBiped"
+		char str[256];
+	//	Q_snprintf(str, sizeof(str), "ValveBiped.%s", newBoneName);
+	//	if ( Q_stristr( str, "Neck" ) != NULL ) // Wat
+		if ( Q_stristr( newBoneName, "Neck" ) != NULL )
+		{
+			Q_snprintf(str, sizeof(str), "ValveBiped.%s1", newBoneName); // VXP: A litle hack for neck: "Bip01 Neck" to "ValveBiped.Bip01_Neck1"
+		}
+		else
+		{
+			Q_snprintf(str, sizeof(str), "ValveBiped.%s", newBoneName);
+		}
+
+		// Old version of Neck hack
+		// If we found Neck
+	//	if ( Q_stristr( str, "Neck" ) != NULL )
+	//	{
+	//		// Add 1 to it's end
+	//		Q_strcat( str, "1" );
+	//	//	Msg( "Found neck! Now %s\n", newBoneName );
+	//	}
+
+	//	return str;
+	//	return &str[0];
+
+
+	//	toReturn = &str[0]; // char[]
+	//	toReturn = (char *)str; // char *
+	//	strcpy( toReturn, str ); // char[]
+		strcpy( boneName, str );
+	}
+
+//	if (	stricmp( toReturn, "ValveBiped.Beer_Bottle" ) == 0 ||
+//			stricmp( toReturn, "ValveBiped.Weapon_bone" ) == 0 ) // VXP: And now some hacks
+//	{
+//	//	Msg( "Someone have a bottle here?!\n" );
+//	//	return "ValveBiped.Bip01_R_Hand";
+//	//	toReturn = "ValveBiped.Bip01_R_Hand";
+//		toReturn = "ValveBiped.Bip01_R_Finger02";
+//	}
+
+//	return boneName;
+//	return toReturn; // If char[] - "warning C4172: returning address of local variable or temporary"
+}
+*/
+
+//-----------------------------------------------------------------------------
+// Purpose: Translates old bone names (i.e. Bip01 Neck) to new ones (ValveBiped.Bip01_Neck1)
+//-----------------------------------------------------------------------------
+#ifdef TRANSLATE_OLD_BONES
+void Studio_TranslateOldBones( char boneName[] )
+{
+	// VXP: Well, there's two ways to do things right now
+	//		Compatible way: you just leave all the changes you've made, and I remove my code. The issue is - beer bottles, AR1 and other stuff need that fix too
+	// Sergeant Stacker: I think the compatible way would be good
+	//		And I could probably fix the beer bottles/molotov stuff if I can get the model sources
+	// VXP: The second way: you're rotating right bone like the citizen did, I leave the code. The issue - in original beta your models will be fucked up
+	//		Yeah, I prefer the compatibility way too
+	//		Because I think my code can slow down engine a little bit
+	//		Little bit
+	//		But with other crap it can make sense
+	// Sergeant Stacker: Yeah I get the gist of it
+	// VXP: So, I'm removing my code then now
+//	return;
+
+	if ( boneName == NULL )
+	{
+		return;
+	}
+
+	// Check if Biped skeleton is present
+	// If name doesn't contains Bip01 (bone is not a part of Biped skeleton) - don't do anything
+	if ( Q_stristr( boneName, "Bip01" ) == NULL ) // Register-independent
+	{
+		return;
+	}
+
+	// If ValveBiped is in name - don't do anything
+	if ( Q_stristr( boneName, "ValveBiped" ) != NULL ) // Register-independent
+	{
+		return;
+	}
+
+	// If name equals only Bip01
+	if ( stricmp( boneName, "Bip01" ) == 0 ) // Register-independent
+	{
+		strcpy( boneName, "ValveBiped" );
+		return;
+	}
+
+	char newBoneName[128];
+	strcpy( newBoneName, boneName );
+	replace_char( newBoneName, ' ', '_' ); // Replace all ' ' to '_'
+
+	// Trying to add a "ValveBiped"
+	char str[ 256 ];
+
+	// VXP: A litle hack for neck: "Bip01 Neck" to "ValveBiped.Bip01_Neck1"
+	if ( Q_stristr( newBoneName, "Neck" ) != NULL )
+	{
+		Q_snprintf( str, sizeof(str), "ValveBiped.%s1", newBoneName );
+	}
+	else
+	{
+		Q_snprintf( str, sizeof(str), "ValveBiped.%s", newBoneName );
+	}
+
+	strcpy( boneName, str );
+}
+
+#ifdef _DEBUG
+char *GiveMeBone( const char *boneName )
+{
+//	return (char *)boneName;
+
+	if ( Q_strstr( boneName, "ValveBiped" ) != NULL )
+	{
+		return (char *)boneName;
+	}
+
+	return (char *)boneName;
+
+/*
+	char szBuffer[ 512 ];
+	char *toReturn;
+
+	strcpy( szBuffer, boneName );
+
+	toReturn = ( char * )szBuffer;
+
+	return toReturn;
+*/
+}
+#endif // _DEBUG
+#endif // TRANSLATE_OLD_BONES
+
 //-----------------------------------------------------------------------------
 // Purpose: lookup bone by name
 //-----------------------------------------------------------------------------
 
-int Studio_BoneIndexByName( const studiohdr_t *pStudioHdr, const char *pName )
+int Studio_BoneIndexByName( const studiohdr_t *pStudioHdr, const char *pName ) // VXP: TODO: Optimize search method like in Source 2007
 {
 	// Extract the bone index from the name
 	mstudiobone_t *pbones = pStudioHdr->pBone( 0 );
 	for ( int i = 0; i < pStudioHdr->numbones; i++ )
 	{
+#ifndef TRANSLATE_OLD_BONES
 		if (!stricmp(pName,pbones[i].pszName( ))) 
 			return i;
+#else
+
+#ifdef _DEBUG
+	//	if (!stricmp( GiveMeBone(pName), GiveMeBone(pbones[i].pszName() )))
+	//		return i;
+#endif // _DEBUG
+
+	//	if (!stricmp( Studio_TranslateOldBones(pName), Studio_TranslateOldBones(pbones[i].pszName() )))
+	//		return i;
+
+		char szBufNeedle[256];
+		strcpy( szBufNeedle, pName );
+		Studio_TranslateOldBones( szBufNeedle );
+
+		char szBufHaystack[256];
+		strcpy( szBufHaystack, pbones[i].pszName() );
+		Studio_TranslateOldBones( szBufHaystack );
+
+		if (!stricmp( szBufNeedle, szBufHaystack ))
+			return i;
+#endif // TRANSLATE_OLD_BONES
 	}
 
 	return -1;

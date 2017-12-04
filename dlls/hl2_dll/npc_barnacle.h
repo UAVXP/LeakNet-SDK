@@ -34,13 +34,15 @@ class CBarnacleTongueTip : public CBaseAnimating
 public:
 	DECLARE_DATADESC();
 
-	~CBarnacleTongueTip( void )
-	{
-		physenv->DestroySpring( m_pSpring );
-	}
+	// VXP: Moved to UpdateOnRemove
+//	~CBarnacleTongueTip( void )
+//	{
+//		physenv->DestroySpring( m_pSpring );
+//	}
 
 	void	Spawn( void );
 	void	Precache( void );
+	void	UpdateOnRemove( );
 
 	bool						CreateSpring( CBaseAnimating *pTongueRoot );
 	static CBarnacleTongueTip	*CreateTongueTip( CBaseAnimating *pTongueRoot, const Vector &vecOrigin, const QAngle &vecAngles );
@@ -82,6 +84,11 @@ public:
 	void			LostPrey( bool bRemoveRagdoll );
 	void			UpdateTongue( void );
 	void			BitePrey( void );
+
+private:
+	bool			CanPickup( CBaseCombatCharacter *pBCC );
+
+public:
 
 	CNetworkVar( float, m_flAltitude );
 	int				m_cGibs;				// barnacle loads up on gibs each time it kills something.

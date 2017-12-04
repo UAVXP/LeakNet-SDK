@@ -510,6 +510,7 @@ public:
 	void				ClearCondition( int iCondition );
 	void				ClearConditions( int *pConditions, int nConditions );
 	void				SetIgnoreConditions( int *pConditions, int nConditions );
+	void				ClearIgnoreConditions( int *pConditions, int nConditions ); // VXP
 	bool				ConditionInterruptsCurSchedule( int iCondition );
 
 	void				SetCustomInterruptCondition( int nCondition );
@@ -637,7 +638,7 @@ public:
 	Vector GetSmoothedVelocity( void );
 
 	CBaseEntity*		GetEnemy() const					{ return m_hEnemy.Get(); }
-	void				SetEnemy( CBaseEntity *pEnemy );
+	void				SetEnemy( CBaseEntity *pEnemy, bool bSetCondNewEnemy = true );
 
 	const Vector &		GetEnemyLKP() const;
 	float				GetEnemyLastTimeSeen() const;
@@ -1146,8 +1147,8 @@ public:
 	virtual bool		IsLightDamage( float flDamage, int bitsDamageType );
 	virtual bool		IsHeavyDamage( float flDamage, int bitsDamageType );
 
-	void				DoRadiusDamage( const CTakeDamageInfo &info, int iClassIgnore );
-	void				DoRadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, int iClassIgnore );
+	void				DoRadiusDamage( const CTakeDamageInfo &info, int iClassIgnore, CBaseEntity *pEntityIgnore );
+	void				DoRadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, int iClassIgnore, CBaseEntity *pEntityIgnore );
 
 	//---------------------------------
 

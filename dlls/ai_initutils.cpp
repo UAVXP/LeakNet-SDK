@@ -48,7 +48,6 @@ void CAI_TestHull::Precache()
 {
 	BaseClass::Precache();
 	engine->PrecacheModel( "models/player.mdl" );
-//	engine->PrecacheModel( "models/humans/male_01.mdl" );
 }
 
 //=========================================================
@@ -59,7 +58,6 @@ void CAI_TestHull::Spawn(void)
 	Precache();
 
 	SetModel( "models/player.mdl" );
-//	SetModel( "models/humans/male_01.mdl" );
 
 	// Set an initial hull size (this will change later)
 	SetHullType(HULL_HUMAN);
@@ -169,6 +167,15 @@ END_DATADESC()
 //=========================================================
 void CNodeEnt::Spawn( void )
 {
+	Spawn( NULL );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+// Input  : *pMapData - 
+//-----------------------------------------------------------------------------
+int CNodeEnt::Spawn( const char *pMapData ) // VXP: TODO: No usage of pMapData!
+{
 	// ---------------------------------------------------------------------------------
 	//  If just a hint node (not used for navigation) just create a hint and bail
 	// ---------------------------------------------------------------------------------
@@ -183,7 +190,7 @@ void CNodeEnt::Spawn( void )
 			Msg("WARNING: Hint node with no hint type!\n");
 		}
 		UTIL_RemoveImmediate( this );
-		return;
+		return -1;
 	}
 	
 	// ---------------------------------------------------------------------------------
@@ -210,12 +217,12 @@ void CNodeEnt::Spawn( void )
 				pNode->SetHint( pHint );
 			else
 			{
-				Msg("AI node graph corrupt\n");
+				DevMsg("AI node graph corrupt\n");
 			}
 		}
 		m_nNodeCount++;
 		UTIL_RemoveImmediate( this );
-		return;
+		return -1;
 	}	
 	else
 	{
@@ -280,6 +287,8 @@ void CNodeEnt::Spawn( void )
 	}
 
 	UTIL_RemoveImmediate( this );
+
+	return -1;
 }
 
 //-----------------------------------------------------------------------------

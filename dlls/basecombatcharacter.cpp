@@ -35,6 +35,8 @@
 
 extern ConVar weapon_showproficiency;
 
+ConVar ai_force_serverside_ragdoll( "ai_force_serverside_ragdoll", "0" ); // VXP
+
 // Weapon proficiency table. Keep this in sync with WeaponProficiency_t enum in the header!!
 proficiencyinfo_t g_WeaponProficiencyTable[] =
 {
@@ -65,6 +67,7 @@ BEGIN_DATADESC( CBaseCombatCharacter )
 	DEFINE_KEYFIELD( CBaseCombatCharacter, m_RelationshipString, FIELD_STRING, "Relationship" ),
 
 	DEFINE_FIELD( CBaseCombatCharacter, m_LastHitGroup, FIELD_INTEGER ),
+	DEFINE_FIELD( CBaseCombatCharacter, m_flDamageAccumulator, FIELD_FLOAT ), // VXP
 	DEFINE_INPUT( CBaseCombatCharacter, m_impactEnergyScale, FIELD_FLOAT, "physdamagescale" ),
 	DEFINE_FIELD( CBaseCombatCharacter, m_CurrentWeaponProficiency, FIELD_INTEGER),
 
@@ -73,6 +76,7 @@ BEGIN_DATADESC( CBaseCombatCharacter )
 	DEFINE_AUTO_ARRAY( CBaseCombatCharacter, m_iAmmo, FIELD_INTEGER ),
 	DEFINE_AUTO_ARRAY( CBaseCombatCharacter, m_hMyWeapons, FIELD_EHANDLE ),
 	DEFINE_FIELD( CBaseCombatCharacter, m_hActiveWeapon, FIELD_EHANDLE ),
+	DEFINE_FIELD( CBaseCombatCharacter, m_bForceServerRagdoll, FIELD_BOOLEAN ), // VXP
 
 	DEFINE_INPUTFUNC( CBaseCombatCharacter, FIELD_VOID, "KilledNPC", InputKilledNPC ),
 
@@ -359,11 +363,16 @@ CBaseCombatCharacter::CBaseCombatCharacter( void )
 	m_HackedGunPos.Init();
 #endif
 
+	// Zero the damage accumulator.
+	m_flDamageAccumulator = 0.0f;
+
 	// Init weapon and Ammo data
 	m_hActiveWeapon			= NULL;
 
 	// reset all ammo values to 0
 	RemoveAllAmmo();
+
+	m_bForceServerRagdoll = ai_force_serverside_ragdoll.GetBool(); // VXP
 }
 
 //------------------------------------------------------------------------------
@@ -834,12 +843,27 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 		UTIL_Remove(this);
 		return true;
 	}
-	else
-	{
-		return BecomeRagdollOnClient( forceVector );
-	}
 
-	return false;
+	//Fix up the force applied to server side ragdolls. This fixes magnets not affecting them.
+	CTakeDamageInfo newinfo = info;
+	newinfo.SetDamageForce( forceVector );
+
+#ifdef HL2_DLL
+//	if ( m_bForceServerRagdoll == true || ( HL2GameRules()->MegaPhyscannonActive() == true ) && !IsPlayer() && Classify() != CLASS_PLAYER_ALLY_VITAL && Classify() != CLASS_PLAYER_ALLY )
+//	if ( m_bForceServerRagdoll == true || ( !IsPlayer() && Classify() != CLASS_PLAYER_ALLY_VITAL && Classify() != CLASS_PLAYER_ALLY ) )
+	if ( m_bForceServerRagdoll == true )
+	{
+		if ( CanBecomeServerRagdoll() == false )
+			return false;
+
+		//FIXME: This is fairly leafy to be here, but time is short!
+		CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_INTERACTIVE_DEBRIS );
+		UTIL_Remove(this);
+		return true;
+	}
+#endif // HL2_DLL
+
+	return BecomeRagdollOnClient( forceVector );
 }
 
 
@@ -963,6 +987,18 @@ void CBaseCombatCharacter::Weapon_Drop( CBaseCombatWeapon *pWeapon, const Vector
 		//	int iBIndex = LookupBone( "ValveBiped.Bip01_R_Wrist" );
 			if ( iBIndex != -1)  
 			{
+				Vector origin;
+				QAngle angles;
+				GetBonePosition( iBIndex, origin, angles);
+				//GetAttachment("gun", origin, angles);
+				pWeapon->SetAbsOrigin( origin );
+				pWeapon->SetAbsAngles( angles );
+				UTIL_Relink(pWeapon);
+			}
+			// Otherwise just set in front of me.
+			else 
+			{
+				// VXP: Ugly repeated second condition
 				iBIndex = LookupBone( "ValveBiped.Bip01_R_Finger02" );
 				if ( iBIndex != -1) 
 				{
@@ -974,13 +1010,12 @@ void CBaseCombatCharacter::Weapon_Drop( CBaseCombatWeapon *pWeapon, const Vector
 					pWeapon->SetAbsAngles( angles );
 					UTIL_Relink(pWeapon);
 				}
-			}
-			// Otherwise just set in front of me.
-			else 
-			{
-				Vector vFacingDir = BodyDirection2D();
-				vFacingDir = vFacingDir * 10.0; 
-				pWeapon->SetAbsOrigin( Weapon_ShootPosition() + vFacingDir );
+				else
+				{
+					Vector vFacingDir = BodyDirection2D();
+					vFacingDir = vFacingDir * 10.0; 
+					pWeapon->SetAbsOrigin( Weapon_ShootPosition() + vFacingDir );
+				}
 			}
 		}
 
@@ -1167,6 +1202,25 @@ CBaseCombatWeapon *CBaseCombatCharacter::Weapon_GetSlot( int slot )
 	return NULL;
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: Get a pointer to a weapon this character has that uses the specified ammo
+//-----------------------------------------------------------------------------
+CBaseCombatWeapon *CBaseCombatCharacter::Weapon_GetWpnForAmmo( int iAmmoIndex ) // VXP
+{
+	for ( int i = 0; i < MAX_WEAPONS; i++ )
+	{
+		CBaseCombatWeapon *weapon = GetWeapon( i );
+		if ( !weapon )
+			continue;
+
+		if ( weapon->GetPrimaryAmmoType() == iAmmoIndex )
+			return weapon;
+		if ( weapon->GetSecondaryAmmoType() == iAmmoIndex )
+			return weapon;
+	}
+
+	return NULL;
+}
 
 
 //-----------------------------------------------------------------------------
@@ -1179,6 +1233,12 @@ bool CBaseCombatCharacter::Weapon_CanUse( CBaseCombatWeapon *pWeapon )
 	acttable_t *pTable		= pWeapon->ActivityList();
 	int			actCount	= pWeapon->ActivityListCount();
 
+	// VXP: From Source 2007 - ?
+//	if( actCount < 1 )
+//	{
+//		// If the weapon has no activity table, it definitely cannot be used.
+//		return false;
+//	}
 	for ( int i = 0; i < actCount; i++, pTable++ )
 	{
 		if ( pTable->required )
@@ -1306,7 +1366,7 @@ int CBaseCombatCharacter::OnTakeDamage( const CTakeDamageInfo &info )
 	default:
 	case LIFE_DEAD:
 		retVal = OnTakeDamage_Dead( info );
-		if ( m_iHealth <= 0 && (info.GetDamageType() & DMG_GIB_CORPSE) )
+		if ( m_iHealth <= 0 && (info.GetDamageType() & DMG_GIB_CORPSE) && ShouldGib( info ) ) // VXP: Added ShouldGib check
 		{
 			Event_Gibbed( info );
 			retVal = 0;
@@ -1331,7 +1391,28 @@ int CBaseCombatCharacter::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 	// do the damage
 	if ( m_takedamage != DAMAGE_EVENTS_ONLY )
 	{
-		m_iHealth -= info.GetDamage();
+	//	m_iHealth -= info.GetDamage();
+
+		// VXP
+		// Separate the fractional amount of damage from the whole
+		float flFractionalDamage = info.GetDamage() - floor( info.GetDamage() );
+		float flIntegerDamage = info.GetDamage() - flFractionalDamage;
+
+		// Add fractional damage to the accumulator
+		m_flDamageAccumulator += flFractionalDamage;
+
+		// If the accumulator is holding a full point of damage, move that point
+		// of damage into the damage we're about to inflict.
+		if( m_flDamageAccumulator >= 1.0 )
+		{
+			flIntegerDamage += 1.0;
+			m_flDamageAccumulator -= 1.0;
+		}
+
+		if ( flIntegerDamage <= 0 )
+			return 0;
+
+		m_iHealth -= flIntegerDamage;
 	}
 
 	return 1;
@@ -1358,6 +1439,7 @@ int CBaseCombatCharacter::OnTakeDamage_Dead( const CTakeDamageInfo &info )
 //-----------------------------------------------------------------------------
 // Purpose: Catch fire! The flames will burn for the given lifetime (in seconds).
 //-----------------------------------------------------------------------------
+/* VXP: Now in CBaseAnimating
 void CBaseCombatCharacter::Ignite( float flFlameLifetime )
 {
 	CEntityFlame *pFlame = CEntityFlame::Create( this );
@@ -1367,6 +1449,7 @@ void CBaseCombatCharacter::Ignite( float flFlameLifetime )
 		m_bOnFire = true;
 	}
 }
+*/
 
 
 //-----------------------------------------------------------------------------
@@ -1576,7 +1659,9 @@ Relationship_t *CBaseCombatCharacter::FindEntityRelationship( CBaseEntity *pTarg
 
 Disposition_t CBaseCombatCharacter::IRelationType ( CBaseEntity *pTarget )
 {
-	return FindEntityRelationship( pTarget )->disposition;
+	if ( pTarget )
+		return FindEntityRelationship( pTarget )->disposition;
+	return D_NU;
 }
 
 //-----------------------------------------------------------------------------
@@ -1586,7 +1671,9 @@ Disposition_t CBaseCombatCharacter::IRelationType ( CBaseEntity *pTarget )
 //-----------------------------------------------------------------------------
 int CBaseCombatCharacter::IRelationPriority( CBaseEntity *pTarget )
 {
-	return FindEntityRelationship( pTarget )->priority;
+	if ( pTarget )
+		return FindEntityRelationship( pTarget )->priority;
+	return 0;
 }
 
 //-----------------------------------------------------------------------------
@@ -1597,6 +1684,7 @@ int CBaseCombatCharacter::IRelationPriority( CBaseEntity *pTarget )
 Vector CBaseCombatCharacter::Weapon_ShootPosition( )
 {
 	// VXP: Need to remake this function with finding an "muzzle" attachment
+	// VXP: UPD: Or not.
 	Vector forward, right, up;
 
 	AngleVectors( GetAbsAngles(), &forward, &right, &up );
@@ -1836,13 +1924,13 @@ void CBaseCombatCharacter::VPhysicsShadowCollision( int index, gamevcollisioneve
 // Input  :
 // Output :
 //-----------------------------------------------------------------------------	
-void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore )
+void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore )
 {
 	// NOTE: I did this this way so I wouldn't have to change a whole bunch of
 	// code unnecessarily. We need TF2 specific rules for RadiusDamage, so I moved
 	// the implementation of radius damage into gamerules. All existing code calls
 	// this method, which calls the game rules method
-	g_pGameRules->RadiusDamage( info, vecSrc, flRadius, iClassIgnore );
+	g_pGameRules->RadiusDamage( info, vecSrc, flRadius, iClassIgnore, pEntityIgnore );
 }
 
 //-----------------------------------------------------------------------------

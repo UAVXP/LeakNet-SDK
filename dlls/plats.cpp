@@ -128,14 +128,12 @@ void CBasePlatTrain::Precache( void )
 	UTIL_ValidateSoundName( m_NoiseMoving, DEFAULT_PLAT_MOVING_NOISE );
 	UTIL_ValidateSoundName( m_NoiseArrived, DEFAULT_PLAT_ARRIVE_NOISE );
 
-	//Precache them all
-	enginesound->PrecacheSound( (char *) STRING(m_NoiseMoving) );
-	enginesound->PrecacheSound( (char *) STRING(m_NoiseArrived) );
 
 #ifdef HL1_DLL
 // set the plat's "in-motion" sound
 	switch (m_MoveSound)
 	{
+	default:
 	case	0:
 		m_NoiseMoving = MAKE_STRING( DEFAULT_PLAT_MOVING_NOISE );
 		break;
@@ -191,14 +189,12 @@ void CBasePlatTrain::Precache( void )
 		enginesound->PrecacheSound( "plats/talkmove2.wav" );
 		m_NoiseMoving = MAKE_STRING("plats/talkmove2.wav");
 		break;
-	default:
-		m_NoiseMoving = MAKE_STRING( DEFAULT_PLAT_MOVING_NOISE );
-		break;
 	}
 
 // set the plat's 'reached destination' stop sound
 	switch (m_StopSound)
 	{
+	default:
 	case	0:
 		m_NoiseArrived = MAKE_STRING( DEFAULT_PLAT_ARRIVE_NOISE );
 		break;
@@ -234,13 +230,12 @@ void CBasePlatTrain::Precache( void )
 		enginesound->PrecacheSound( "plats/talkstop1.wav" );
 		m_NoiseArrived = MAKE_STRING("plats/talkstop1.wav");
 		break;
-
-	default:
-		m_NoiseArrived = MAKE_STRING( DEFAULT_PLAT_ARRIVE_NOISE );
-		break;
 	}
 #endif // HL1_DLL
 
+	//Precache them all
+	enginesound->PrecacheSound( (char *) STRING(m_NoiseMoving) );
+	enginesound->PrecacheSound( (char *) STRING(m_NoiseArrived) );
 }
 
 
@@ -1025,7 +1020,7 @@ void CFuncTrain::Spawn( void )
 	
 	if ( !m_target )
 	{
-		Warning("FuncTrain with no target");
+		Warning("FuncTrain '%s' has no target\n", GetDebugName());
 	}
 	
 	if ( m_flBlockDamage == 0 )
@@ -1975,7 +1970,7 @@ void CFuncTrackTrain::Spawn( void )
 	m_dir = 1;
 
 	if ( !m_target )
-		Msg( "FuncTrain with no target" );
+		Msg( "FuncTrackTrain '%s' has no target\n", GetDebugName() );
 
 	SetModel( STRING( GetModelName() ) );
 	SetMoveType( MOVETYPE_PUSH );

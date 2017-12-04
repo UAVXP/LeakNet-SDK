@@ -375,11 +375,27 @@ CAI_Schedule *CAI_BaseNPC::GetNewSchedule( void )
 	}
 	else
 	{
+		// I dunno how this trend got started, but we need to find the problem.
+		// You may not be in combat state with no enemy!!! (sjb) 11/4/03
+		if( m_NPCState == NPC_STATE_COMBAT && !GetEnemy() )
+		{
+			DevMsg("**ERROR: Combat State with no enemy! slamming to ALERT\n");
+			SetState( NPC_STATE_ALERT );
+		}
 
+
+	// VXP: UNDONE: moved to CAI_BaseNPC::MaintainSchedule
 		if ( !m_bConditionsGathered ) // occurs if a schedule is exhausted within one think
 			GatherConditions();
 
-		scheduleType = SelectSchedule();
+		if ( m_NPCState == NPC_STATE_SCRIPT || m_NPCState == NPC_STATE_DEAD ) // VXP: From Source 2007
+		{
+			scheduleType = CAI_BaseNPC::SelectSchedule();
+		}
+		else
+		{
+			scheduleType = SelectSchedule();
+		}
 	}
 
 	return GetScheduleOfType( scheduleType );
@@ -428,7 +444,8 @@ void CAI_BaseNPC::MaintainSchedule ( void )
 	int			i;
 	bool		runTask = true;
 
-	memset( g_AITaskTimings, sizeof(g_AITaskTimings), 0 );
+//	memset( g_AITaskTimings, sizeof(g_AITaskTimings), 0 );
+	memset( g_AITaskTimings, 0, sizeof(g_AITaskTimings) ); // VXP
 	
 	g_nAITasksRun = 0;
 	
@@ -471,9 +488,19 @@ void CAI_BaseNPC::MaintainSchedule ( void )
 			// Notify the NPC that his schedule is changing
 			OnScheduleChange();
 
+		/* VXP: Copied from CAI_BaseNPC::GetNewSchedule and then commented
+			if ( !HasCondition(COND_NPC_FREEZE) && !m_bConditionsGathered )
+			{
+				// occurs if a schedule is exhausted within one think
+				GatherConditions();
+			}
+		*/
 			if ( ShouldSelectIdealState() )
 			{
-				SelectIdealState();
+			//	SelectIdealState();
+				NPC_STATE eIdealState = SelectIdealState();
+				if ( m_IdealNPCState != eIdealState )
+					m_IdealNPCState = eIdealState;
 			}
 
 			if ( HasCondition( COND_TASK_FAILED ) && m_NPCState == m_IdealNPCState )
@@ -1019,7 +1046,7 @@ void CAI_BaseNPC::StartTask( const Task_t *pTask )
 
 			pBestSound = GetBestSound();
 
-			Assert( pBestSound != NULL );
+		//	Assert( pBestSound != NULL ); // VXP: Happens rarely
 			/*
 			if ( pBestSound && FindLateralCover( pBestSound->m_vecOrigin, vec3_origin) )
 			{
@@ -1032,6 +1059,7 @@ void CAI_BaseNPC::StartTask( const Task_t *pTask )
 			if (!pBestSound)
 			{
 				TaskFail("No sound in list");
+				DevMsg( 2, "Attempting to find cover from best sound, but best sound not found.\n" );
 				return;
 			}
 
@@ -2797,7 +2825,7 @@ void CAI_BaseNPC::RunTask( const Task_t *pTask )
 
 	default:
 		{
-			Msg( "No RunTask entry for %s\n", TaskName( pTask->iTask ) );
+			DevMsg( "No RunTask entry for %s\n", TaskName( pTask->iTask ) );
 			TaskComplete();
 		}
 		break;

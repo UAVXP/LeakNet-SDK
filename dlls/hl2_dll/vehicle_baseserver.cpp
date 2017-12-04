@@ -44,7 +44,8 @@ BEGIN_DATADESC_NO_BASE( vehiclesounds_t )
 
 END_DATADESC()
 
-BEGIN_DATADESC_NO_BASE( CBaseServerVehicle )
+//BEGIN_DATADESC_NO_BASE( CBaseServerVehicle )
+BEGIN_SIMPLE_DATADESC( CBaseServerVehicle )
 
 // These are reset every time by the constructor of the owning class 
 //	DEFINE_FIELD( CBaseServerVehicle, m_pVehicle, FIELD_CLASSPTR ),
@@ -229,7 +230,13 @@ CBaseEntity	*CBaseServerVehicle::GetDriver( void )
 CBasePlayer	*CBaseServerVehicle::GetPassenger( int nRole ) 
 { 
 	Assert( nRole == VEHICLE_DRIVER ); 
-	return ToBasePlayer( GetDrivableVehicle()->GetDriver() );
+//	return ToBasePlayer( GetDrivableVehicle()->GetDriver() );
+	CBaseEntity *pDriver = GetDrivableVehicle()->GetDriver();
+
+	if ( pDriver == NULL )
+		return NULL;
+
+	return ToBasePlayer( pDriver );
 }
 
 //-----------------------------------------------------------------------------
@@ -251,13 +258,14 @@ void CBaseServerVehicle::SetPassenger( int nRole, CBasePlayer *pPassenger )
 	Assert( nRole == VEHICLE_DRIVER ); 
 	
 	// IVehicle is clearing the driver
-	if ( pPassenger )
+	if ( pPassenger != NULL )
 	{
 		GetDrivableVehicle()->EnterVehicle( pPassenger );
 	}
 	else
 	{
 		GetDrivableVehicle()->ExitVehicle( nRole );
+	//	GetDrivableVehicle()->SetVehicleEntryAnim( false );
 	}
 }
 	
@@ -275,7 +283,8 @@ void CBaseServerVehicle::GetPassengerStartPoint( int nRole, Vector *pPoint, QAng
 	if ( pAnimating )
 	{
 		char pAttachmentName[32];
-		Q_snprintf( pAttachmentName, 32, "vehicle_feet_passenger%d", nRole );
+	//	Q_snprintf( pAttachmentName, 32, "vehicle_feet_passenger%d", nRole );
+		Q_snprintf( pAttachmentName, sizeof( pAttachmentName ), "vehicle_feet_passenger%d", nRole );
 		int nFeetAttachmentIndex = pAnimating->LookupAttachment(pAttachmentName);
 		if ( nFeetAttachmentIndex > 0 )
 		{
@@ -303,7 +312,7 @@ bool CBaseServerVehicle::CheckExitPoint( float yaw, int distance, Vector *pEndPo
   	Vector vecStart = m_pVehicle->GetAbsOrigin();
   	Vector vecDir;
    
-  	vecStart.z += 48;		// always 48" from ground
+	vecStart.z += 48;		// always 48" from ground
   	vehicleAngles[YAW] += yaw;	
   	AngleVectors( vehicleAngles, NULL, &vecDir, NULL );
 	// Vehicles are oriented along the Y axis
@@ -311,7 +320,7 @@ bool CBaseServerVehicle::CheckExitPoint( float yaw, int distance, Vector *pEndPo
   	*pEndPoint = vecStart + vecDir * distance;
   
   	trace_t tr;
-  	UTIL_TraceHull( vecStart, *pEndPoint, Vector(-10,-10,-36), Vector(10,10,36), MASK_SOLID, m_pVehicle, COLLISION_GROUP_NONE, &tr );
+	UTIL_TraceHull( vecStart, *pEndPoint, Vector(-10,-10,-36), Vector(10,10,36), MASK_SOLID, m_pVehicle, COLLISION_GROUP_NONE, &tr );
   
   	if( tr.fraction < 1.0 )
   		return false;
@@ -322,7 +331,7 @@ bool CBaseServerVehicle::CheckExitPoint( float yaw, int distance, Vector *pEndPo
 //-----------------------------------------------------------------------------
 // Purpose: Where does this passenger exit the vehicle?
 //-----------------------------------------------------------------------------
-void CBaseServerVehicle::GetPassengerExitPoint( int nRole, Vector *pExitPoint, QAngle *pAngles )
+bool CBaseServerVehicle::GetPassengerExitPoint( int nRole, Vector *pExitPoint, QAngle *pAngles )
 { 
 	Assert( nRole == VEHICLE_DRIVER ); 
 
@@ -341,26 +350,26 @@ void CBaseServerVehicle::GetPassengerExitPoint( int nRole, Vector *pExitPoint, Q
 			{
 				*pAngles = vehicleExitAngles;
 				*pExitPoint = tr.endpos;
-				return;
+				return true;
 			}
 		}
 	}
 
 	// left side 
 	if( CheckExitPoint( 90, 90, pExitPoint ) )	// angle from car, distance from origin, actual exit point
-		return;
+		return true;
 
 	// right side
 	if( CheckExitPoint( -90, 90, pExitPoint ) )
-		return;
+		return true;
 
 	// front
 	if( CheckExitPoint( 0, 100, pExitPoint ) )
-		return;
+		return true;
 
 	// back
 	if( CheckExitPoint( 180, 170, pExitPoint ) )
-		return;
+		return true;
 
 	// All else failed, just pop out top
 	Vector vecWorldMins, vecWorldMaxs;
@@ -368,6 +377,11 @@ void CBaseServerVehicle::GetPassengerExitPoint( int nRole, Vector *pExitPoint, Q
 	pExitPoint->x = (vecWorldMins.x + vecWorldMaxs.x) * 0.5f;
 	pExitPoint->y = (vecWorldMins.y + vecWorldMaxs.y) * 0.5f;
 	pExitPoint->z = vecWorldMaxs.z + 50.0f;
+
+	// VXP: Source 2007: Make sure it's clear?
+
+	// No clear exit point available!
+	return false;
 }
 
 //-----------------------------------------------------------------------------
@@ -552,7 +566,7 @@ int CBaseServerVehicle::GetExitAnimToUse( void )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-void CBaseServerVehicle::HandleEntryExitFinish( bool bExitAnimOn )
+void CBaseServerVehicle::HandleEntryExitFinish( bool bExitAnimOn, bool bResetAnim )
 {
 	// Figure out which entrypoint hitbox the player is in
 	CBaseAnimating *pAnimating = dynamic_cast<CBaseAnimating *>(m_pVehicle);
@@ -563,7 +577,7 @@ void CBaseServerVehicle::HandleEntryExitFinish( bool bExitAnimOn )
 	if ( bExitAnimOn )
 	{
 		CBasePlayer *pPlayer = dynamic_cast<CBasePlayer *>(GetDriver());
-		if ( pPlayer )
+		if ( pPlayer != NULL )
 		{
 			Vector vecEyes;
 			QAngle vecEyeAng;
@@ -583,15 +597,22 @@ void CBaseServerVehicle::HandleEntryExitFinish( bool bExitAnimOn )
 		}
 	}
 
-	// Start the vehicle idling again
-	int iSequence = pAnimating->SelectWeightedSequence( ACT_IDLE );
-	if ( iSequence > ACTIVITY_NOT_AVAILABLE )
+	// Only reset the animation if we're told to
+	if ( bResetAnim )
 	{
-		pAnimating->m_flCycle = 0;
-		pAnimating->m_flAnimTime = gpGlobals->curtime;
-		pAnimating->ResetSequence( iSequence );
-		pAnimating->ResetClientsideFrame();
+		// Start the vehicle idling again
+		int iSequence = pAnimating->SelectWeightedSequence( ACT_IDLE );
+		if ( iSequence > ACTIVITY_NOT_AVAILABLE )
+		{
+			pAnimating->m_flCycle = 0;
+			pAnimating->m_flAnimTime = gpGlobals->curtime;
+			pAnimating->ResetSequence( iSequence );
+			pAnimating->ResetClientsideFrame();
+		}
 	}
+
+//	GetDrivableVehicle()->SetVehicleEntryAnim( false );
+//	GetDrivableVehicle()->SetVehicleExitAnim( false, vec3_origin );
 }
 
 //-----------------------------------------------------------------------------
@@ -603,8 +624,20 @@ void CBaseServerVehicle::GetVehicleViewPosition( int nRole, Vector *pAbsOrigin, 
 	CBasePlayer *pPlayer = GetPassenger( VEHICLE_DRIVER );
 	Assert( pPlayer );
 
-	*pAbsAngles = pPlayer->EyeAngles();
-	*pAbsOrigin = m_pVehicle->GetAbsOrigin();
+	if ( pPlayer != NULL )
+	{
+		// Call through the player to resolve the actual position (if available)
+		if ( pAbsOrigin != NULL )
+		{
+		//	*pAbsOrigin = m_pVehicle->GetAbsOrigin();
+			*pAbsOrigin = pPlayer->EyePosition();
+		}
+
+		if ( pAbsAngles != NULL )
+		{
+			*pAbsAngles = pPlayer->EyeAngles();
+		}
+	}
 }
 
 //-----------------------------------------------------------------------------

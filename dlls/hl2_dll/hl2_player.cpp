@@ -25,6 +25,7 @@
 #include "ai_basenpc.h"		
 #include "weapon_physcannon.h"
 #include "globals.h"
+#include "vehicle_base.h" // VXP
 
 extern ConVar weapon_showproficiency;
 extern proficiencyinfo_t g_WeaponProficiencyTable[];
@@ -47,8 +48,6 @@ ConVar hl2_sprintspeed( "hl2_sprintspeed", "320" );
 
 ConVar player_showpredictedposition( "player_showpredictedposition", "0" );
 ConVar player_showpredictedposition_timestep( "player_showpredictedposition_timestep", "1.0" );
-
-ConVar	model( "model", "", 0, "Current model name" );
 
 LINK_ENTITY_TO_CLASS( player, CHL2_Player );
 PRECACHE_REGISTER(player);
@@ -344,7 +343,6 @@ void CHL2_Player::PreThink(void)
 	UpdateWeaponPosture();
 }
 
-
 //------------------------------------------------------------------------------
 // Purpose :
 // Input   :
@@ -362,8 +360,17 @@ Class_T  CHL2_Player::Classify ( void )
 		if(IsInAVehicle())
 		{
 			// VXP:
-			// IDrivableVehicle *m_pDrivableVehicle = dynamic_cast<IDrivableVehicle*>(m_pVehicle);
-			IServerVehicle *pVehicle = GetVehicle();
+		//	IDrivableVehicle *m_pDrivableVehicle = dynamic_cast<IDrivableVehicle*>(m_pVehicle);
+		//	IServerVehicle *pVehicle = GetVehicle();
+
+			CBaseEntity *pVehicleEntity = GetVehicleEntity();
+			if ( !pVehicleEntity )
+				return CLASS_PLAYER;
+
+			CPropVehicleDriveable *pVehicle = dynamic_cast<CPropVehicleDriveable*>(pVehicleEntity);
+			if ( !pVehicle )
+				return CLASS_PLAYER;
+
 			return pVehicle->ClassifyPassenger( this, CLASS_PLAYER );
 		}
 		else
@@ -473,8 +480,30 @@ void CHL2_Player::Touch( CBaseEntity *pOther )
 void CHL2_Player::Spawn(void)
 {
 //	SetModel( "models/player.mdl" );
-//	SetModel( "models/humans/male_01.mdl" );
-	SetModel( (Q_strcmp(model.GetString(), "") == 0) ? "models/player.mdl" : model.GetString() );
+//	SetModel( "models/player/male_03.mdl" );
+	
+	// VXP: Maybe it's a hack
+	const char *szModelName = NULL;
+	szModelName = engine->InfoKeyValue( engine->GetInfoKeyBuffer( this->edict() ), "model" );
+
+	int modelIndex = modelinfo->GetModelIndex( szModelName );
+
+	if ( ( modelIndex == -1 ) || ( Q_strcmp( szModelName, "" ) == 0 ) )
+	{
+		szModelName = "models/player.mdl";
+	}
+
+#ifdef _DEBUG
+	if ( Q_strncmp( szModelName, "models/player.mdl", 17 ) == 0 )
+	{
+		Warning( "Player model is set to PLAYER.MDL!\n" );
+	}
+	DevMsg( "Player's model set to %s\n", szModelName );
+#endif
+
+	engine->PrecacheModel( szModelName ); // VXP: Just in case it's not already precached - can cause a little lag I think, but we're good to go with it
+	SetModel( szModelName );
+
     g_ulModelIndexPlayer = GetModelIndex();
 
 	BaseClass::Spawn();
@@ -1323,15 +1352,18 @@ bool CHL2_Player::ClientCommand(const char *cmd)
 	return BaseClass::ClientCommand( cmd );
 }
 
-void CHL2_Player::GetInVehicle( IServerVehicle *pVehicle, int nRole )
+bool CHL2_Player::GetInVehicle( IServerVehicle *pVehicle, int nRole )
 {
-	BaseClass::GetInVehicle( pVehicle, nRole );
+	bool done = BaseClass::GetInVehicle( pVehicle, nRole );
 
+	// VXP: TODO: Maybe, this code can help in npc_strider.cpp
 	// Orient the player to face forward! While we're in hierarchy,
 	// the player's view angles are *relative*
 	QAngle qRelativeAngles = GetLocalAngles();
 	qRelativeAngles[ROLL] = 0;
 	SnapEyeAngles( qRelativeAngles );
+
+	return done;
 }
 
 
@@ -1377,6 +1409,8 @@ void CHL2_Player::PlayerUse ( void )
 
 	CBaseEntity *pUseEntity = FindUseEntity();
 
+	bool usedSomething = false; // VXP
+
 	// Found an object
 	if ( pUseEntity )
 	{
@@ -1403,11 +1437,15 @@ void CHL2_Player::PlayerUse ( void )
 				m_afPhysicsFlags |= PFLAG_USING;
 
 			pUseEntity->AcceptInput( "Use", this, this, emptyVariant, USE_TOGGLE );
+
+			usedSomething = true;
 		}
 		// UNDONE: Send different USE codes for ON/OFF.  Cache last ONOFF_USE object to send 'off' if you turn away
 		else if ( (m_afButtonReleased & IN_USE) && (pUseEntity->ObjectCaps() & FCAP_ONOFF_USE) )	// BUGBUG This is an "off" use
 		{
 			pUseEntity->AcceptInput( "Use", this, this, emptyVariant, USE_TOGGLE );
+
+			usedSomething = true;
 		}
 
 #if	HL2_SINGLE_PRIMARY_WEAPON_MODE
@@ -1429,6 +1467,8 @@ void CHL2_Player::PlayerUse ( void )
 					Weapon_DropSlot( pWeapon->GetSlot() );
 					Weapon_Equip( pWeapon );
 				}
+
+				usedSomething = true;
 			}
 		}
 #endif
@@ -1436,6 +1476,13 @@ void CHL2_Player::PlayerUse ( void )
 	else if ( m_afButtonPressed & IN_USE )
 	{
 		EmitSound( "HL2Player.UseDeny" );
+	}
+
+	// Debounce the use key
+	if ( usedSomething && pUseEntity )
+	{
+		m_Local.m_nOldButtons |= IN_USE;
+		m_afButtonPressed &= ~IN_USE;
 	}
 }
 

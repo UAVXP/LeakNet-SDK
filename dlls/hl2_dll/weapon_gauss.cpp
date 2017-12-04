@@ -352,7 +352,7 @@ void CWeaponGaussGun::ChargedFire( void )
 
 	if ( penetrated == true )
 	{
-		RadiusDamage( CTakeDamageInfo( this, this, flDamage, DMG_SHOCK ), tr.endpos, 200.0f, CLASS_NONE );
+		RadiusDamage( CTakeDamageInfo( this, this, flDamage, DMG_SHOCK ), tr.endpos, 200.0f, CLASS_NONE, NULL );
 	}
 
 	// Register a muzzleflash for the AI
@@ -534,7 +534,7 @@ void CWeaponGaussGun::SecondaryAttack( void )
 			m_sndCharge	= (CSoundEnvelopeController::GetController()).SoundCreate( filter, entindex(), CHAN_STATIC, "weapons/gauss/chargeloop.wav", ATTN_NORM );
 		}
 
-		assert(m_sndCharge!=NULL);
+		Assert(m_sndCharge!=NULL);
 		if ( m_sndCharge != NULL )
 		{
 			(CSoundEnvelopeController::GetController()).Play( m_sndCharge, 1.0f, 50 );

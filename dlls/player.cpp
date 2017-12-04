@@ -110,6 +110,49 @@ ConVar	sk_player_stomach( "sk_player_stomach","1" );
 ConVar	sk_player_arm( "sk_player_arm","1" );
 ConVar	sk_player_leg( "sk_player_leg","1" );
 
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CC_GiveCurrentAmmo( void )
+{
+	CBasePlayer *pPlayer = UTIL_GetCommandClient();
+	if ( !pPlayer )
+		return;
+
+	CBaseCombatWeapon *pWeapon = pPlayer->GetActiveWeapon();
+	if ( !pWeapon )
+		return;
+
+	if( pWeapon->UsesPrimaryAmmo() )
+	{
+		int ammoIndex = pWeapon->GetPrimaryAmmoType();
+
+		if( ammoIndex != -1 )
+		{
+			int giveAmount;
+			giveAmount = GetAmmoDef()->MaxCarry(ammoIndex);
+			pPlayer->GiveAmmo( giveAmount, GetAmmoDef()->GetAmmoOfIndex(ammoIndex)->pName );
+		}
+	}
+	if( pWeapon->UsesSecondaryAmmo() && pWeapon->HasSecondaryAmmo() )
+	{
+		// Give secondary ammo out, as long as the player already has some
+		// from a presumeably natural source. This prevents players on XBox
+		// having Combine Balls and so forth in areas of the game that
+		// were not tested with these items.
+		int ammoIndex = pWeapon->GetSecondaryAmmoType();
+
+		if( ammoIndex != -1 )
+		{
+			int giveAmount;
+			giveAmount = GetAmmoDef()->MaxCarry(ammoIndex);
+			pPlayer->GiveAmmo( giveAmount, GetAmmoDef()->GetAmmoOfIndex(ammoIndex)->pName );
+		}
+	}
+}
+
+static ConCommand givecurrentammo("givecurrentammo", CC_GiveCurrentAmmo, "Give a supply of ammo for current weapon..\n", FCVAR_CHEAT);
+
 // pl
 BEGIN_SIMPLE_DATADESC( CPlayerState )
 	DEFINE_FIELD( CPlayerState, netname, FIELD_STRING ),
@@ -2602,14 +2645,14 @@ void CBasePlayer::AdjustPlayerTimeBase( int simulation_ticks )
 		if ( estimated_end_time > too_fast_limit )
 		{
 		//	Msg( "client too fast by %f msec\n", 1000.0f * ( estimated_end_time - end_of_frame ) );
-			Msg( "client %s too fast by %f msec\n", PlayerData()->netname, 1000.0f * ( estimated_end_time - end_of_frame ) );
+			DevMsg( "client %s too fast by %f msec\n", PlayerData()->netname, 1000.0f * ( estimated_end_time - end_of_frame ) );
 			m_nTickBase = end_of_frame_ticks - simulation_ticks + 1;
 		}
 		// Or to slow
 		else if ( estimated_end_time < too_slow_limit )
 		{
 		//	Msg( "client too slow by %f msec\n", 1000.0f * ( end_of_frame - estimated_end_time ) );
-			Msg( "client %s too slow by %f msec\n", PlayerData()->netname, 1000.0f * ( end_of_frame - estimated_end_time ) );
+			DevMsg( "client %s too slow by %f msec\n", PlayerData()->netname, 1000.0f * ( end_of_frame - estimated_end_time ) );
 			m_nTickBase = end_of_frame_ticks - simulation_ticks + 1;
 		}
 	}
@@ -2703,26 +2746,28 @@ void CBasePlayer::PhysicsSimulate( void )
 		// If we haven't dropped too many packets, then run some commands
 		if ( ctx->dropped_packets < 24 )                
 		{
-			if ( ctx->dropped_packets > numbackup )
+			int droppedcmds = ctx->dropped_packets;
+
+			if ( droppedcmds > numbackup )
 			{
 				// Msg( "lost %i cmds\n", dropped_packets - numbackup );
 			}
 
 			// Rerun the last valid command a bunch of times.
-			while ( ctx->dropped_packets > numbackup )           
+			while ( droppedcmds > numbackup )           
 			{
 				PlayerRunCommand( &m_LastCmd, MoveHelperServer()  );
 				// For this scenario packets, just use the start time over and over again
 				m_nTickBase = starttick;
-				ctx->dropped_packets--;
+				droppedcmds--;
 			}
 
 			// Now run the "history" commands if we still have dropped packets
-			while ( ctx->dropped_packets > 0 )
+			while ( droppedcmds > 0 )
 			{
-				int cmdnum = ctx->dropped_packets + ctx->numcmds - 1;
+				int cmdnum = ctx->numcmds + droppedcmds - 1;
 				PlayerRunCommand( &ctx->cmds[ cmdnum ], MoveHelperServer()  );
-				ctx->dropped_packets--;
+				droppedcmds--;
 			}
 		}
 
@@ -2794,6 +2839,7 @@ void CBasePlayer::PlayerRunCommand(CUserCmd *ucmd, IMoveHelper *moveHelper)
 	m_touchedPhysObject = false;
 
 	// Handle FL_FROZEN.
+	// VXP: Here we can add preventing player from moving for a few seconds at the beginning of the map
 	if(GetFlags() & FL_FROZEN)
 	{
 		ucmd->frametime = 0.0;
@@ -3983,8 +4029,12 @@ void CBasePlayer::Spawn( void )
 	{
 		StopObserverMode();
 	}
+	else // VXP: From Source 2007
+	{
+		StartObserverMode( GetAbsOrigin(), GetAbsAngles() );
+	}
 
-//	Relink(); // VXP
+	Relink();
 	// Clear any screenfade
 //	color32 nothing = {0,0,0,0};
 //	UTIL_ScreenFade( this, nothing, 0, 0, FFADE_OUT );
@@ -4196,13 +4246,13 @@ void CBasePlayer::VelocityPunch( const Vector &vecForce )
 //-----------------------------------------------------------------------------
 // Purpose: Put this player in a vehicle 
 //-----------------------------------------------------------------------------
-void CBasePlayer::GetInVehicle( IServerVehicle *pVehicle, int nRole )
+bool CBasePlayer::GetInVehicle( IServerVehicle *pVehicle, int nRole )
 {
 	Assert( NULL == m_hVehicle.Get() );
 	Assert( nRole >= 0 );
 
 	if ( pVehicle->GetPassenger( nRole ) )
-		return;
+		return false;
 
 	CBaseEntity *pEnt = pVehicle->GetVehicleEnt();
 	Assert( pEnt );
@@ -4215,7 +4265,7 @@ void CBasePlayer::GetInVehicle( IServerVehicle *pVehicle, int nRole )
 
 		//Must be able to stow our weapon
 		if ( ( pWeapon != NULL ) && ( pWeapon->Holster( NULL ) == false ) )
-			return;
+			return false;
 
 		m_Local.m_iHideHUD |= HIDEHUD_WEAPONS;
 	}
@@ -4253,6 +4303,8 @@ void CBasePlayer::GetInVehicle( IServerVehicle *pVehicle, int nRole )
 	g_pNotify->ReportNamedEvent( this, "PlayerEnteredVehicle" );
 
 	OnVehicleStart();
+
+	return true;
 }
 
 
@@ -4277,6 +4329,7 @@ void CBasePlayer::LeaveVehicle( const Vector &vecExitPoint, const QAngle &vecExi
 	QAngle qAngles = GetAbsAngles();
 	if ( vecExitPoint == vec3_origin )
 	{
+		// VXP: FIXME: this might fail to find a safe exit point!!
 		pVehicle->GetPassengerExitPoint( nRole, &vNewPos, &qAngles );
 	}
 	else
@@ -4789,8 +4842,9 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
         GiveAmmo( 255,    "ML_Grenade");
         GiveAmmo( 255,    "Grenade");
         GiveAmmo( 255,    "GaussEnergy");
+		GiveAmmo( 99,    "Gasoline");
 
-	//	GiveNamedItem( "weapon_alyxgun" );
+		GiveNamedItem( "weapon_alyxgun" );
         GiveNamedItem( "weapon_ar1" );
         GiveNamedItem( "weapon_binoculars" );
 		GiveNamedItem( "weapon_brickbat" );
@@ -5550,7 +5604,7 @@ QAngle CBasePlayer::AutoaimDeflection( Vector &vecSrc, float flDist, float flDel
 
 	CBaseEntity *pEntHit = tr.m_pEnt;
 
-	if ( pEntHit && pEntHit->m_takedamage != DAMAGE_NO)
+	if ( pEntHit && pEntHit->m_takedamage != DAMAGE_NO && pEntHit->GetHealth() > 0 )
 	{
 		m_hAutoAimTarget = pEntHit;
 
@@ -5584,7 +5638,7 @@ QAngle CBasePlayer::AutoaimDeflection( Vector &vecSrc, float flDist, float flDel
 			if ( pEntity == this )
 				continue;
 
-			if (!pEntity->IsAlive() || !pEntity->edict() )
+			if ( (pEntity->MyNPCPointer() && !pEntity->IsAlive()) || !pEntity->edict() )
 				continue;
 
 			if ( !g_pGameRules->ShouldAutoAim( this, pEntity->edict() ) )
@@ -5594,15 +5648,20 @@ QAngle CBasePlayer::AutoaimDeflection( Vector &vecSrc, float flDist, float flDel
 			if ((GetWaterLevel() != 3 && pEntity->GetWaterLevel() == 3) || (GetWaterLevel() == 3 && pEntity->GetWaterLevel() == 0))
 				continue;
 
-			// Only shoot enemies!
-			if ( IRelationType( pEntity ) != D_HT )
+			if( pEntity->MyNPCPointer() )
 			{
-				if ( !pEntity->IsPlayer() && !g_pGameRules->IsDeathmatch())
-					// Msg( "friend\n");
-					continue;
+				// Only shoot enemies!
+				if ( IRelationType( pEntity ) != D_HT )
+				{
+					if ( !pEntity->IsPlayer() && !g_pGameRules->IsDeathmatch())
+						// Msg( "friend\n");
+						continue;
+				}
 			}
 
-			center = pEntity->BodyTarget( vecSrc );
+			// Don't autoaim at the noisy bodytarget, this makes the autoaim crosshair wobble.
+		//	center = pEntity->BodyTarget( vecSrc );
+			center = pEntity->WorldSpaceCenter();
 
 			dir = (center - vecSrc);
 			VectorNormalize( dir );

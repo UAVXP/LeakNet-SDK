@@ -19,6 +19,11 @@
 #pragma once
 #endif
 
+//============================================================
+//#define OLD_ENT_COUNT // VXP: How is this should impact a poor stability of engine?
+// VXP: Yes, this affects multiplayer - it crashes engine.dll when killing someone
+//============================================================
+
 #define TICK_RATE		(0.015)  // 15 msec ticks
 #define TIME_TO_TICKS( dt )		( (int)( 0.5f + (float)dt / TICK_RATE ) )
 #define ROUND_TO_TICKS( t )		( TICK_RATE * TIME_TO_TICKS( t ) )
@@ -29,12 +34,26 @@
 #define MAX_CLIENTS					(1<<MAX_CLIENT_BITS)
 
 // How many bits to use to encode an edict.
+/*
+#ifdef OLD_ENT_COUNT
+	#define	MAX_EDICT_BITS				10			// # of bits needed to represent max edicts
+#else
+	#define	MAX_EDICT_BITS				11			// # of bits needed to represent max edicts
+#endif
+*/
 #define	MAX_EDICT_BITS				10			// # of bits needed to represent max edicts
 // Max # of edicts in a level (1024)
 #define	MAX_EDICTS					(1<<MAX_EDICT_BITS)
 
 
 // Used for networking ehandles.
+/*
+#ifdef OLD_ENT_COUNT
+	#define NUM_ENT_ENTRY_BITS		(MAX_EDICT_BITS + 2)
+#else
+	#define NUM_ENT_ENTRY_BITS		(MAX_EDICT_BITS + 1)
+#endif
+*/
 #define NUM_ENT_ENTRY_BITS		(MAX_EDICT_BITS + 2)
 #define NUM_ENT_ENTRIES			(1 << NUM_ENT_ENTRY_BITS)
 #define ENT_ENTRY_MASK			(NUM_ENT_ENTRIES - 1)
@@ -93,6 +112,7 @@
 #define FL_OBJECT				(1<<25) // Terrible name. This is an object that NPCs should see. Missiles, for example.
 #define FL_KILLME				(1<<26)	// This entity is marked for death -- will be freed by game DLL
 //#define FL_???				(1<<27)	
+#define FL_ONFIRE				(1<<27)	// VXP: You know...
 
 
 // edict->movetype values

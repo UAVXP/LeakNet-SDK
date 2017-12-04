@@ -340,11 +340,14 @@ void CNPC_Barnacle::BarnacleThink ( void )
 			// tongue is fully extended, and is touching someone.
 			CBaseCombatCharacter *pBCC = dynamic_cast<CBaseCombatCharacter *>(pTouchEnt);
 
-			// FIXME: humans should return neck position
-			Vector vecGrabPos = pTouchEnt->EyePosition();
-			if ( pBCC && pBCC->HandleInteraction( g_interactionBarnacleVictimGrab, &vecGrabPos, this ) )
+			if( CanPickup( pBCC ) )
 			{
-				AttachTongueToTarget( pTouchEnt, vecGrabPos );
+				// FIXME: humans should return neck position
+				Vector vecGrabPos = pTouchEnt->EyePosition();
+				if ( pBCC && pBCC->HandleInteraction( g_interactionBarnacleVictimGrab, &vecGrabPos, this ) )
+				{
+					AttachTongueToTarget( pTouchEnt, vecGrabPos );
+				}
 			}
 		}
 		else
@@ -359,7 +362,10 @@ void CNPC_Barnacle::BarnacleThink ( void )
 			else
 			{
 				// Restore the hanging spring constant 
-				m_hTongueTip->m_pSpring->SetSpringConstant( BARNACLE_TONGUE_SPRING_CONSTANT_HANGING );
+				if ( m_hTongueTip )
+				{
+					m_hTongueTip->m_pSpring->SetSpringConstant( BARNACLE_TONGUE_SPRING_CONSTANT_HANGING );
+				}
 
 				m_flAltitude = flLength;
 				m_fTongueExtended = true;
@@ -373,6 +379,36 @@ void CNPC_Barnacle::BarnacleThink ( void )
 
 	StudioFrameAdvance();
 	DispatchAnimEvents( this );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+bool CNPC_Barnacle::CanPickup( CBaseCombatCharacter *pBCC )
+{
+	// Barnacle can pick this item up because it has already passed the filters
+	// in TongueTouchEnt. It just isn't an NPC or player and doesn't need further inspection.
+	if( !pBCC )
+		return true;
+
+	// Don't pickup turrets
+	if( FClassnameIs( pBCC, "npc_turret_floor" ) )
+		return false;
+
+	// Don't pick up a dead player or NPC
+	if( !pBCC->IsAlive() )
+		return false;
+
+//	if( pBCC->IsPlayer() )
+//	{
+//		CBasePlayer *pPlayer = dynamic_cast<CBasePlayer*>(pBCC);
+//	
+//		Assert( pPlayer != NULL );
+//
+//		// Don't pick up a player held by another barnacle
+//		if( pPlayer->HasPhysicsFlag(PFLAG_ONBARNACLE) )
+//			return false;
+//	}
+	return true;
 }
 
 //-----------------------------------------------------------------------------
@@ -633,18 +669,26 @@ void CNPC_Barnacle::AttachTongueToTarget( CBaseEntity *pTouchEnt, Vector vecGrab
 			Vector vecBonePos;
 			QAngle vecBoneAngles;
 			pAnimating->GetBonePosition( m_iGrabbedBoneIndex, vecBonePos, vecBoneAngles );
-			m_hTongueTip->Teleport( &vecBonePos, NULL, NULL );
+
+			if ( m_hTongueTip )
+			{
+				m_hTongueTip->Teleport( &vecBonePos, NULL, NULL );
+			}
 
 			//NDebugOverlay::Box( vecBonePos, -Vector(5,5,5), Vector(5,5,5), 255,255,255, 0, 10.0 );
 
 			// Create the ragdoll attached to tongue
 			IPhysicsObject *pTonguePhysObject = m_hTongueTip->VPhysicsGetObject();
 			m_hRagdoll = CreateServerRagdollAttached( pAnimating, vec3_origin, -1, COLLISION_GROUP_NONE, pTonguePhysObject, m_hTongueTip, 0, vecBonePos, m_iGrabbedBoneIndex, vec3_origin );
-			m_hRagdoll->RemoveSolidFlags( FSOLID_NOT_SOLID );
-			m_hRagdoll->Relink();
-			m_hRagdoll->SetThink( NULL );
-			m_hRagdoll->SetDamageEntity( pAnimating );
-			m_hRagdoll->RecheckCollisionFilter();
+			if ( m_hRagdoll )
+			{
+				m_hRagdoll->RemoveSolidFlags( FSOLID_NOT_SOLID );
+				m_hRagdoll->Relink();
+				m_hRagdoll->SetThink( NULL );
+
+				m_hRagdoll->SetDamageEntity( pAnimating );
+				m_hRagdoll->RecheckCollisionFilter();
+			}
 
 			// Apply the target's current velocity to each of the ragdoll's bones
 			Vector vecVelocity = pAnimating->GetGroundSpeedVelocity() * 0.5;
@@ -694,7 +738,10 @@ void CNPC_Barnacle::BitePrey( void )
 	// Players are never swallowed, nor is anything we don't have a ragdoll for
 	if ( !m_hRagdoll || pVictim->IsPlayer() )
 	{
-		LostPrey( false );
+		if ( !pVictim->IsPlayer() || pVictim->GetHealth() <= 0 )
+		{
+			LostPrey( false );
+		}
 		return;
 	}
 
@@ -808,22 +855,25 @@ void CNPC_Barnacle::LostPrey( bool bRemoveRagdoll )
 	m_bSwallowingPrey = false;
 	SetEnemy( NULL );
 
-	// Remove our tongue's shadow object, in case we just finished swallowing something
-	IPhysicsObject *pPhysicsObject = m_hTongueTip->VPhysicsGetObject();
-	if ( pPhysicsObject && pPhysicsObject->GetShadowController() )
+	if ( m_hTongueTip )
 	{
-		Vector vecCenter = WorldSpaceCenter();
-		m_hTongueTip->Teleport( &vecCenter, NULL, &vec3_origin );
-
-		// Reduce the spring constant while we lower
-		m_hTongueTip->m_pSpring->SetSpringConstant( BARNACLE_TONGUE_SPRING_CONSTANT_LOWERING );
-
-		// Start colliding with the world again
-		pPhysicsObject->RemoveShadowController();
-		m_hTongueTip->SetMoveType( MOVETYPE_VPHYSICS );
-		pPhysicsObject->EnableMotion( true );
-		pPhysicsObject->EnableGravity( true );
-		pPhysicsObject->RecheckCollisionFilter();
+		// Remove our tongue's shadow object, in case we just finished swallowing something
+		IPhysicsObject *pPhysicsObject = m_hTongueTip->VPhysicsGetObject();
+		if ( pPhysicsObject && pPhysicsObject->GetShadowController() )
+		{
+			Vector vecCenter = WorldSpaceCenter();
+			m_hTongueTip->Teleport( &vecCenter, NULL, &vec3_origin );
+	
+			// Reduce the spring constant while we lower
+			m_hTongueTip->m_pSpring->SetSpringConstant( BARNACLE_TONGUE_SPRING_CONSTANT_LOWERING );
+	
+			// Start colliding with the world again
+			pPhysicsObject->RemoveShadowController();
+			m_hTongueTip->SetMoveType( MOVETYPE_VPHYSICS );
+			pPhysicsObject->EnableMotion( true );
+			pPhysicsObject->EnableGravity( true );
+			pPhysicsObject->RecheckCollisionFilter();
+		}
 	}
 }
 
@@ -832,6 +882,9 @@ void CNPC_Barnacle::LostPrey( bool bRemoveRagdoll )
 //-----------------------------------------------------------------------------
 void CNPC_Barnacle::UpdateTongue( void )
 {
+	if ( m_hTongueTip == NULL )
+		return;
+
 	// Set the spring's length to that of the tongue's extension
 	m_hTongueTip->m_pSpring->SetSpringLength( m_flAltitude );
 
@@ -955,22 +1008,24 @@ CBaseEntity *CNPC_Barnacle::TongueTouchEnt ( float *pflLength )
 
 	CBaseEntity *pList[10];
 	int count = UTIL_EntitiesInBox( pList, 10, mins, maxs, (FL_CLIENT|FL_NPC) );
-	if ( count )
-	{
-		for ( int i = 0; i < count; i++ )
-		{
-			CBaseCombatCharacter *pVictim = ToBaseCombatCharacter( pList[ i ] );
+	if ( !count )
+		return NULL;
 
-			// only clients and monsters
-			if (	pList[i]					!= this				&& 
-					IRelationType( pList[i] )	== D_HT				&& 
-					pVictim->m_lifeState		!= LIFE_DEAD		&&
-					pVictim->m_lifeState		!= LIFE_DYING		&&
-					!( pVictim->GetFlags() & FL_NOTARGET )	)	
-			{
-				return pList[i];
-			}
+
+	for ( int i = 0; i < count; i++ )
+	{
+		CBaseCombatCharacter *pVictim = ToBaseCombatCharacter( pList[ i ] );
+
+		// only clients and monsters
+		if (	pList[i]					!= this				&& 
+				IRelationType( pList[i] )	== D_HT				&& 
+				pVictim->m_lifeState		!= LIFE_DEAD		&&
+				pVictim->m_lifeState		!= LIFE_DYING		&&
+				!( pVictim->GetFlags() & FL_NOTARGET )	)	
+		{
+			return pList[i];
 		}
+
 	}
 
 	return NULL;
@@ -1012,6 +1067,20 @@ void CBarnacleTongueTip::Precache( void )
 {
 	PrecacheModel( "models/props_junk/rock001a.mdl" );
 	BaseClass::Precache();
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBarnacleTongueTip::UpdateOnRemove( )
+{
+	if ( m_pSpring )
+	{
+		physenv->DestroySpring( m_pSpring );
+		m_pSpring = NULL;
+	}
+	BaseClass::UpdateOnRemove();
 }
 
 //-----------------------------------------------------------------------------

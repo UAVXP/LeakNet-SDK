@@ -28,6 +28,7 @@
 #include "te_effect_dispatch.h"
 #include "utldict.h"
 #include "studio.h" // VXP: Am I doing this right?
+#include "movevars_shared.h" // VXP
 
 
 extern short		g_sModelIndexSmoke;			// (in combatweapon.cpp) holds the index for the smoke cloud
@@ -266,6 +267,8 @@ private:
 //-----------------------------------------------------------------------------
 int UTIL_DropToFloor( CBaseEntity *pEntity, unsigned int mask)
 {
+	// VXP: Assume no ground
+//	pEntity->SetGroundEntity( NULL );
 	Assert( pEntity );
 
 	trace_t	trace;
@@ -844,7 +847,7 @@ static void SetMinMaxSize (CBaseEntity *pEnt, const Vector& mins, const Vector& 
 	{
 		if (mins[i] > maxs[i])
 		{
-			Error("backwards mins/maxs");
+			Error( "%s: backwards mins/maxs", ( pEnt ) ? pEnt->GetDebugName() : "<NULL>" );
 		}
 	}
 
@@ -874,11 +877,19 @@ void UTIL_SetModel( CBaseEntity *pEntity, const char *pModelName )
 	int i = modelinfo->GetModelIndex( pModelName );
 	if ( i < 0 )
 	{
-		Error("no precache: %s\n", pModelName);
+	//	Error("no precache: %s\n", pModelName);
+		Error("%i/%s - %s:  UTIL_SetModel:  not precached: %s\n", pEntity->entindex(),
+			STRING( pEntity->GetEntityName() ),
+			pEntity->GetClassname(), pModelName);
+
+		// VXP
+	//	Warning( "no precache: %s\n", pModelName );
+	//	Assert( 0 );
 	}
 
 	pEntity->SetModelIndex( i ) ;
-	pEntity->SetModelName( MAKE_STRING( pModelName ) );
+//	pEntity->SetModelName( MAKE_STRING( pModelName ) );
+	pEntity->SetModelName( AllocPooledString( pModelName ) ); // VXP: Fix for setting up model at CHL2_Player::Spawn
 
 	// brush model
 	const model_t *mod = modelinfo->GetModel( i );
@@ -1004,8 +1015,31 @@ void UTIL_BloodStream( const Vector &origin, const Vector &direction, int color,
 	if ( g_Language == LANGUAGE_GERMAN && color == BLOOD_COLOR_RED )
 		color = 0;
 
+//	CPVSFilter filter( origin );
+//	te->BloodStream( filter, 0.0, &origin, &direction, 247, 63, 14, 255, min( amount, 255 ) );
+
+	int	r, g, b, a;
+
+	switch ( color )
+	{
+	default:
+	case BLOOD_COLOR_RED:
+		r = 247;
+		g = 63;
+		b = 14;
+		a = 255;
+		break;
+
+	case BLOOD_COLOR_YELLOW:
+		r = 128;
+		g = 128;
+		b = 0;
+		a = 255;
+		break;
+	}
+
 	CPVSFilter filter( origin );
-	te->BloodStream( filter, 0.0, &origin, &direction, 247, 63, 14, 255, min( amount, 255 ) );
+	te->BloodStream( filter, 0.0, &origin, &direction, r, g, b, a, min( amount, 255 ) );
 }				
 
 
@@ -1575,6 +1609,14 @@ void UTIL_StripToken( const char *pKey, char *pDest )
 		i++;
 	}
 	pDest[i] = 0;
+}
+
+
+// VXP: computes gravity scale for an absolute gravity.  Pass the result into CBaseEntity::SetGravity()
+float UTIL_ScaleForGravity( float desiredGravity )
+{
+	float worldGravity = sv_gravity.GetFloat();
+	return worldGravity > 0 ? desiredGravity / worldGravity : 0;
 }
 
 

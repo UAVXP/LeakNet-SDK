@@ -406,11 +406,12 @@ bool CAI_BaseNPC::PassesDamageFilter( CBaseEntity *pAttacker )
 //-----------------------------------------------------------------------------
 int CAI_BaseNPC::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 {
-	PainSound();// "Ouch!"
 	Forget( bits_MEMORY_INCOVER );
 
 	if ( !BaseClass::OnTakeDamage_Alive( info ) )
 		return 0;
+
+	PainSound();// "Ouch!"
 
 #if 0
 	// HACKHACK Don't kill npcs in a script.  Let them break their scripts first
@@ -618,15 +619,15 @@ bool CAI_BaseNPC::IsHeavyDamage( float flDamage, int bitsDamageType )
 	return (flDamage > 20);
 }
 
-void CAI_BaseNPC::DoRadiusDamage( const CTakeDamageInfo &info, int iClassIgnore )
+void CAI_BaseNPC::DoRadiusDamage( const CTakeDamageInfo &info, int iClassIgnore, CBaseEntity *pEntityIgnore )
 {
-	RadiusDamage( info, GetAbsOrigin(), info.GetDamage() * 2.5, iClassIgnore );
+	RadiusDamage( info, GetAbsOrigin(), info.GetDamage() * 2.5, iClassIgnore, pEntityIgnore );
 }
 
 
-void CAI_BaseNPC::DoRadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, int iClassIgnore )
+void CAI_BaseNPC::DoRadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, int iClassIgnore, CBaseEntity *pEntityIgnore )
 {
-	RadiusDamage( info, vecSrc, info.GetDamage() * 2.5, iClassIgnore );
+	RadiusDamage( info, vecSrc, info.GetDamage() * 2.5, iClassIgnore, pEntityIgnore );
 }
 
 
@@ -1489,6 +1490,23 @@ void CAI_BaseNPC::SetIgnoreConditions( int *pConditions, int nConditions )
 	}
 }
 
+void CAI_BaseNPC::ClearIgnoreConditions( int *pConditions, int nConditions )
+{
+	for ( int i = 0; i < nConditions; ++i )
+	{
+		int iCondition = pConditions[i];
+		int interrupt = InterruptFromCondition( iCondition );
+		
+		if ( interrupt == -1 )
+		{
+			Assert(0);
+			continue;
+		}
+		
+		m_InverseIgnoreConditions.SetBit( interrupt ); // set means don't ignore
+	}
+}
+
 //---------------------------------------------------------
 //---------------------------------------------------------
 bool CAI_BaseNPC::HasInterruptCondition( int iCondition )
@@ -1849,7 +1867,7 @@ CSound* CAI_BaseNPC::GetBestSound( void )
 {
 	CSound *pResult = GetSenses()->GetClosestSound();
 	if ( pResult == NULL)
-		Msg( "Warning: NULL Return from GetBestSound\n" ); // condition previously set now no longer true. Have seen this when play too many sounds...
+		DevMsg( "Warning: NULL Return from GetBestSound\n" ); // condition previously set now no longer true. Have seen this when play too many sounds...
 	return pResult;
 }
 
@@ -2624,7 +2642,7 @@ void CAI_BaseNPC::GatherAttackConditions( CBaseEntity *pTarget, float flDist )
 		condition = GetActiveWeapon()->WeaponRangeAttack1Condition(flDot, flDist);
 
 		if ( condition == COND_NOT_FACING_ATTACK && FInAimCone( targetPos ) )
-			Msg( "Warning: COND_NOT_FACING_ATTACK set but FInAimCone is true\n" );
+			DevMsg( "Warning: COND_NOT_FACING_ATTACK set but FInAimCone is true\n" );
 
 		if (condition != COND_CAN_RANGE_ATTACK1 || bWeaponHasLOS)
 		{
@@ -3006,9 +3024,10 @@ NPC_STATE CAI_BaseNPC::SelectIdealState ( void )
 		{
 			if ( GetEnemy() == NULL )
 			{
-				m_IdealNPCState = NPC_STATE_ALERT;
+			//	m_IdealNPCState = NPC_STATE_ALERT;
 				// m_fEffects = EF_BRIGHTFIELD;
 				DevWarning( 2, "***Combat state with no enemy!\n" );
+				return NPC_STATE_ALERT;
 			}
 			break;
 		}
@@ -4953,7 +4972,10 @@ void CAI_BaseNPC::SetDefaultEyeOffset ( void )
 
 	if ( m_vDefaultEyeOffset == vec3_origin )
 	{
-		Msg( "WARNING: %s has no eye offset in .qc!\n", GetClassname() );
+		if ( Classify() != CLASS_NONE )
+		{
+			DevMsg( "WARNING: %s(%s) has no eye offset in .qc!\n", GetClassname(), STRING(GetModelName()) );
+		}
 		VectorAdd( WorldAlignMins(), WorldAlignMaxs(), m_vDefaultEyeOffset );
 		m_vDefaultEyeOffset *= 0.75;
 	}
@@ -5531,7 +5553,7 @@ int CAI_BaseNPC::DrawDebugTextOverlays(void)
 		// --------------
 		// Print Health
 		// --------------
-		Q_snprintf(tempstr,sizeof(tempstr),"Health: %i",m_iHealth);
+		Q_snprintf(tempstr,sizeof(tempstr),"Health: %i  (DACC:%1.2f)",m_iHealth, GetDamageAccumulator());
 		NDebugOverlay::EntityText(entindex(),text_offset,tempstr,0);
 		text_offset++;
 
@@ -6312,18 +6334,27 @@ bool CAI_BaseNPC::BBoxFlat ( void )
 }
 
 
-void CAI_BaseNPC::SetEnemy( CBaseEntity *pEnemy )
+void CAI_BaseNPC::SetEnemy( CBaseEntity *pEnemy, bool bSetCondNewEnemy /*= true*/ )
 {
 	if (m_hEnemy != pEnemy)
 	{
 		ClearAttackConditions( );
 		VacateStrategySlot();
 		m_GiveUpOnDeadEnemyTimer.Stop();
+
+		// If we've just found a new enemy, set the condition
+		if ( pEnemy && bSetCondNewEnemy )
+		{
+			SetCondition( COND_NEW_ENEMY );
+		}
 	}
 
 	// Assert( (pEnemy == NULL) || (m_NPCState == NPC_STATE_COMBAT) );
 
 	m_hEnemy = pEnemy;
+
+	if ( !pEnemy )
+		ClearCondition( COND_NEW_ENEMY );
 }
 
 const Vector &CAI_BaseNPC::GetEnemyLKP() const

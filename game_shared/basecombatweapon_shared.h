@@ -121,6 +121,8 @@ public:
 	virtual void			SendWeaponAnim( int iActivity );
 	virtual void			SendViewModelAnim( int nSequence );
 
+	virtual void			SetViewModel(); // VXP
+
 	virtual bool			HasWeaponIdleTimeElapsed( void );
 	virtual void			SetWeaponIdleTime( float time );
 	virtual float			GetWeaponIdleTime( void );
@@ -326,9 +328,6 @@ public:
 	virtual void			GetViewmodelBoneControllers(C_BaseViewModel *pViewModel, float controllers[MAXSTUDIOBONECTRLS]) { return; }
 
 	virtual void			NotifyShouldTransmit( ShouldTransmitState_t state );
-	
-	virtual int				GetWorldModelIndex( void );
-	void					EnsureCorrectRenderingModel();
 
 #endif // End client-only methods
 

@@ -24,6 +24,8 @@ extern ConVar    sk_npc_dmg_ar2_grenade;
 extern ConVar    sk_max_ar2_grenade;
 extern ConVar	 sk_ar2_grenade_radius;
 
+ConVar ar2_switch_mode_sounds("ar2_switch_mode_sounds", "1", FCVAR_ARCHIVE, "Switches AR2 mode sounds"); 
+
 #define AR2_ZOOM_RATE	0.5f	// Interval between zoom levels in seconds.
 
 //=========================================================
@@ -40,6 +42,7 @@ BEGIN_DATADESC( CWeaponAR2 )
 END_DATADESC()
 
 IMPLEMENT_SERVERCLASS_ST(CWeaponAR2, DT_WeaponAR2)
+//	SendPropBool( SENDINFO( m_bUseGrenade ) )
 END_SEND_TABLE()
 
 LINK_ENTITY_TO_CLASS( weapon_ar2, CWeaponAR2 );
@@ -58,6 +61,10 @@ acttable_t	CWeaponAR2::m_acttable[] =
 	{ ACT_RUN_CROUCH_AIM,	ACT_RUN_CROUCH_AIM_RIFLE,		false },
 	{ ACT_GESTURE_RANGE_ATTACK1,	ACT_GESTURE_RANGE_ATTACK_AR2,	false },
 //	{ ACT_RANGE_ATTACK2, ACT_RANGE_ATTACK_AR2_GRENADE, true },
+
+	// VXP: Sergeant Stacker's
+	{ ACT_IDLE,						ACT_IDLE_SMG1,					false },
+	{ ACT_IDLE_ANGRY,				ACT_IDLE_ANGRY_SMG1,			false },
 };
 
 IMPLEMENT_ACTTABLE(CWeaponAR2);
@@ -71,6 +78,8 @@ CWeaponAR2::CWeaponAR2( )
 	m_fMaxRange2	= 1024;
 
 	m_nShotsFired	= 0;
+
+	m_bUseGrenade = false;
 }
 
 void CWeaponAR2::Precache( void )
@@ -88,6 +97,8 @@ bool CWeaponAR2::Deploy( void )
 	
 //	SetThink( ScreenTextThink );
 //	SetNextThink( gpGlobals->curtime + 0.1f );
+
+	SendGrenageUsageState();
 
 	return BaseClass::Deploy();
 }
@@ -108,15 +119,26 @@ void CWeaponAR2::ItemPostFrame( void )
 
 	if ( pOwner->m_afButtonPressed & IN_ALT1 )
 	{
-		m_bUseGrenade = !m_bUseGrenade;
+		UseGrenade( !m_bUseGrenade );
 		if ( m_bZoomed )
 		{
 			Zoom();
 		}
 	//	Msg( "AR2 secondary mode has changed (%s)\n", ( (m_bUseGrenade) ? "grenade" : "sight" ) );
+
+		if ( ar2_switch_mode_sounds.GetBool() )
+		{
+		//	CPASAttenuationFilter filter( this );
+		//	EmitSound( filter, entindex(), CHAN_VOICE, "weapons/ar2/ar2_mode.wav", 1, ATTN_NORM );
+
+			EmitSound( m_bUseGrenade ? "Weapon_AR2.GrenadeMode" : "Weapon_AR2.ZoomMode" );
+		}
 	}
 	
-	NDebugOverlay::ScreenText( 0.85, 0.9, (m_bUseGrenade ? "Grenade" : "Zoom"), 255, 127, 0, 255, 0.0 ); // VXP: Moved to Think
+//	if ( !m_bZoomed )
+//	{
+//		NDebugOverlay::ScreenText( 0.85, 0.9, (m_bUseGrenade ? "Grenade" : "Zoom"), 255, 127, 0, 255, 0.0 ); // VXP: Moved to Think
+//	}
 	
 	//Zoom in
 	if ( (pOwner->m_afButtonPressed & IN_ATTACK2) )
@@ -152,13 +174,38 @@ void CWeaponAR2::ItemPostFrame( void )
 //		NDebugOverlay::ScreenText( 0.85, 0.9, (m_bUseGrenade ? "Grenade" : "Zoom"), 255, 127, 0, 255, 0.0 );
 // }
 
+void CWeaponAR2::SendGrenageUsageState()
+{
+	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
+	if ( !pPlayer )
+		return;
+
+	CSingleUserRecipientFilter user( pPlayer );
+	user.MakeReliable();
+	UserMessageBegin( user, "AR2ModeChanged" );
+		WRITE_BOOL( m_bUseGrenade );
+	MessageEnd();
+}
+
+void CWeaponAR2::UseGrenade( bool use ) // Do this at Spawn too
+{
+	if ( m_bUseGrenade == use )
+		return;
+
+	m_bUseGrenade = use;
+	SendGrenageUsageState();
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
 void CWeaponAR2::SecondaryAttack( void )
 {
 	if( !m_bUseGrenade )
+	{
+	//	BaseClass::SecondaryAttack();
 		return;
+	}
 
 	// Only the player fires this way so we can cast
 	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );

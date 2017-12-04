@@ -27,14 +27,15 @@ ConVar phys_guntorque("phys_guntorque", "100" );
 ConVar phys_gunglueradius("phys_gunglueradius", "128" );
 
 // VXP
-ConVar phys_continuous_vmodel_anim( "phys_continuous_vmodel_anim", "0", FCVAR_ARCHIVE,
-									"Enables continuous view model primary animation. May cause delayed primary attack release." );
+ConVar phys_continuous_vmodel_anim( "phys_continuous_vmodel_anim", "1", FCVAR_ARCHIVE,
+									"Enables continuous view model primary animation." );
 
 static int g_physgunBeam;
 #define PHYSGUN_BEAM_SPRITE		"sprites/physbeam.vmt"
 
 //#define MAX_PELLETS	16
-#define MAX_PELLETS	160
+//#define MAX_PELLETS	160
+#define MAX_PELLETS	60
 
 class CWeaponGravityGun;
 

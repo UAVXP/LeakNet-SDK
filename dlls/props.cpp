@@ -244,6 +244,7 @@ void CBaseProp::Spawn( void )
 		return;
 	}
 
+	PrecacheModel( szModel );
 	Precache();
 	SetModel( szModel );
 
@@ -253,7 +254,7 @@ void CBaseProp::Spawn( void )
 	{
 		if ( iResult == PARSE_FAILED_BAD_DATA )
 		{
-			Warning( "%s at %.0f %.0f %0.f uses model %s, which has an invalid prop_data type. DELETED.\n", GetClassname(), GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z, szModel );
+			DevWarning( "%s at %.0f %.0f %0.f uses model %s, which has an invalid prop_data type. DELETED.\n", GetClassname(), GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z, szModel );
 			UTIL_Remove( this );
 			return;
 		}
@@ -262,7 +263,7 @@ void CBaseProp::Spawn( void )
 			// If we don't have data, but we're a prop_physics, fail
 			if ( FClassnameIs( this, "prop_physics" ) )
 			{
-				Warning( "%s at %.0f %.0f %0.f uses model %s, which requires that it be used on a prop_static. DELETED.\n", GetClassname(), GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z, szModel );
+				DevWarning( "%s at %.0f %.0f %0.f uses model %s, which requires that it be used on a prop_static. DELETED.\n", GetClassname(), GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z, szModel );
 				UTIL_Remove( this );
 				return;
 			}
@@ -270,16 +271,20 @@ void CBaseProp::Spawn( void )
 		else if ( iResult == PARSE_SUCCEEDED )
 		{
 			// If we have data, and we're a static prop, fail
-			if ( !FClassnameIs( this, "prop_physics" ) && !FClassnameIs( this, "prop_physics_override" ) && !FClassnameIs( this, "prop_dynamic_override" ) )
+		//	if ( !FClassnameIs( this, "prop_physics" ) && !FClassnameIs( this, "prop_physics_override" ) && !FClassnameIs( this, "prop_dynamic_override" ) )
+
+			// If we have data, and we're not a physics prop, fail
+			if ( !dynamic_cast<CPhysicsProp*>(this) ) // VXP: From Source 2007
 			{
-				Warning( "%s at %.0f %.0f %0.f uses model %s, which requires that it be used on a prop_physics. DELETED.\n", GetClassname(), GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z, szModel );
+				DevWarning( "%s at %.0f %.0f %0.f uses model %s, which requires that it be used on a prop_physics. DELETED.\n", GetClassname(), GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z, szModel );
 				UTIL_Remove( this );
 				return;
 			}
 		}
 	}
 
-	SetMoveType( MOVETYPE_NONE );
+//	SetMoveType( MOVETYPE_NONE );
+	SetMoveType( MOVETYPE_PUSH );
 	m_takedamage = DAMAGE_NO;
 	SetNextThink( TICK_NEVER_THINK );
 
@@ -294,7 +299,14 @@ void CBaseProp::Spawn( void )
 //-----------------------------------------------------------------------------
 void CBaseProp::Precache( void )
 {
+	if ( GetModelName() == NULL_STRING )
+	{
+		Msg( "%s at (%.3f, %.3f, %.3f) has no model name!\n", GetClassname(), GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z );
+		SetModelName( AllocPooledString( "models/error.mdl" ) );
+	}
+
 	engine->PrecacheModel( STRING( GetModelName() ) );
+
 	BaseClass::Precache();
 }
 
@@ -572,6 +584,8 @@ int CBreakableProp::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 		return ret;
 	}
 
+	// VXP: TODO: Would be cool to implement Source 2007 feature that appears at this place
+
 	int ret = BaseClass::OnTakeDamage( info );
 	m_OnHealthChanged.Set( m_iHealth, info.GetAttacker(), this );
 
@@ -795,13 +809,25 @@ void CDynamicProp::Spawn( )
 		SetClassname( "prop_dynamic" );
 	}
 
+	// If the prop is not-solid, the bounding box needs to be 
+	// OBB to correctly surround the prop as it rotates.
+	// Check the classname so we don't mess with doors & other derived classes.
+	if ( GetSolid() == SOLID_NONE && FClassnameIs( this, "prop_dynamic" ) )
+	{
+		SetSolid( SOLID_OBB );
+		AddSolidFlags( FSOLID_NOT_SOLID );
+	}
+
 	BaseClass::Spawn();
 
 	if ( IsMarkedForDeletion() )
 		return;
 
 	// Now condense all classnames to one
-	SetClassname("prop_dynamic");
+	if ( FClassnameIs( this, "dynamic_prop" ) || FClassnameIs( this, "prop_dynamic_override" )  ) // VXP: From Source 2007
+	{
+		SetClassname("prop_dynamic");
+	}
 
 	AddFlag( FL_STATICPROP );
 	Relink();
@@ -816,6 +842,28 @@ void CDynamicProp::Spawn( )
 	}
 
 	CreateVPhysics();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CDynamicProp::OnRestore( void )
+{
+	BaseClass::OnRestore();
+
+	// We may need to recreate our bone followers.
+	if ( !VPhysicsGetObject() )
+	{
+		CreateVPhysics();
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+bool CDynamicProp::OverridePropdata( void )
+{
+	return ( FClassnameIs(this, "prop_dynamic_override" ) );
 }
 
 
@@ -874,7 +922,11 @@ void CDynamicProp::AnimThink( void )
 //------------------------------------------------------------------------------
 void CDynamicProp::InputSetAnimation( inputdata_t &inputdata )
 {
-	int nSequence = LookupSequence ( inputdata.value.String() );
+	const char *szAnim = inputdata.value.String();
+	if ( !szAnim )
+		return;
+
+	int nSequence = LookupSequence ( szAnim );
 
 	// Set to the desired anim, or default anim if the desired is not present
 	if ( nSequence > ACTIVITY_NOT_AVAILABLE )
@@ -887,7 +939,7 @@ void CDynamicProp::InputSetAnimation( inputdata_t &inputdata )
 	else
 	{
 		// Not available try to get default anim
-		Msg( "Dynamic prop no sequence named:%s\n", inputdata.value.String() );
+		Msg( "Dynamic prop %s no sequence named:%s\n", GetDebugName(), szAnim );
 		SetSequence( 0 );
 	}
 }
@@ -900,6 +952,7 @@ void CDynamicProp::InputSetAnimation( inputdata_t &inputdata )
 void CDynamicProp::PropSetSequence( int nSequence )
 {
 	m_flCycle = 0;
+	m_flAnimTime = gpGlobals->curtime; // VXP
 	ResetSequence( nSequence );
 	ResetClientsideFrame();
 
@@ -1052,7 +1105,10 @@ void CPhysicsProp::Spawn( )
 		return;
 
 	// Now condense all classnames to one
-	SetClassname( "prop_physics" );
+	if ( FClassnameIs( this, "prop_physics_override") ) // VXP: From Source 2007
+	{
+		SetClassname( "prop_physics" );
+	}
 
 	if ( HasSpawnFlags( SF_PHYSPROP_DEBRIS ) )
 	{
@@ -1113,6 +1169,14 @@ bool CPhysicsProp::CreateVPhysics()
 		}
 	}
 	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+bool CPhysicsProp::OverridePropdata( void )
+{
+	return ( FClassnameIs(this, "prop_physics_override" ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -1510,6 +1574,7 @@ static CBreakModelsPrecached g_BreakModelsPrecached;
 
 void PropBreakablePrecacheAll( string_t modelName )
 {
+	int iBreakables = 0;
 	if ( g_BreakModelsPrecached.IsInList( modelName ) )
 		return;
 
@@ -1519,7 +1584,9 @@ void PropBreakablePrecacheAll( string_t modelName )
 	CUtlVector<breakmodel_t> list;
 
 	BreakModelList( list, modelIndex, COLLISION_GROUP_NONE, 0 );
-	for ( int i = 0; i < list.Count(); i++ )
+	iBreakables = list.Count();
+
+	for ( int i = 0; i < iBreakables; i++ )
 	{
 		string_t modelName = AllocPooledString(list[i].modelName);
 		PropBreakablePrecacheAll( modelName );
@@ -1685,10 +1752,11 @@ const char *GetMassEquivalent(float flMass)
 //=============================================================================================================
 // BASE PROP DOOR
 //=============================================================================================================
-#define	SF_DOOR_START_OPEN		1		// Door is initially open (by default, doors start closed).
-#define SF_DOOR_LOCKED			2048	// Door is initially locked.
-#define SF_DOOR_SILENT			4096	// Door makes no sounds, despite the settings for sound files.
-#define	SF_DOOR_USE_CLOSES		8192	// Door can be +used to close before its autoreturn delay has expired.
+#define	SF_DOOR_START_OPEN			1		// Door is initially open (by default, doors start closed).
+#define	SF_DOOR_ROTATE_BACKWARDS	2		// VXP: Door should rotate in player's way
+#define SF_DOOR_LOCKED				2048	// Door is initially locked.
+#define SF_DOOR_SILENT				4096	// Door makes no sounds, despite the settings for sound files.
+#define	SF_DOOR_USE_CLOSES			8192	// Door can be +used to close before its autoreturn delay has expired.
 
 //
 // Private activities.
@@ -1703,6 +1771,12 @@ enum
 {
 	AE_DOOR_OPEN = 1,	// The door should start opening.
 };
+
+//Default noises for rotating door noises
+#define	DEFAULT_DOOR_ROTATING_MOVING_NOISE		"doors/func_door_rotating/default_move.wav"
+#define	DEFAULT_DOOR_ROTATING_ARRIVE_NOISE		"doors/func_door_rotating/default_stop.wav" 
+#define	DEFAULT_DOOR_ROTATING_LOCKED_NOISE		"doors/func_door_rotating/default_locked.wav"
+#define	DEFAULT_DOOR_ROTATING_UNLOCKED_NOISE	"common/null.wav"
 
 
 void PlayLockSounds(CBaseEntity *pEdict, locksound_t *pls, int flocked, int fbutton);
@@ -1819,11 +1893,11 @@ void CBasePropDoor::Precache(void)
 
 	RegisterPrivateActivities();
 
-	UTIL_ValidateSoundName( m_SoundMoving, "common/null.wav" );
-	UTIL_ValidateSoundName( m_SoundOpen, "common/null.wav" );
-	UTIL_ValidateSoundName( m_SoundClose, "common/null.wav" );
-	UTIL_ValidateSoundName( m_ls.sLockedSound, "common/null.wav" );
-	UTIL_ValidateSoundName( m_ls.sUnlockedSound, "common/null.wav" );
+	UTIL_ValidateSoundName( m_SoundMoving, DEFAULT_DOOR_ROTATING_MOVING_NOISE );
+	UTIL_ValidateSoundName( m_SoundOpen, DEFAULT_DOOR_ROTATING_ARRIVE_NOISE );
+	UTIL_ValidateSoundName( m_SoundClose, DEFAULT_DOOR_ROTATING_ARRIVE_NOISE );
+	UTIL_ValidateSoundName( m_ls.sLockedSound, DEFAULT_DOOR_ROTATING_LOCKED_NOISE );
+	UTIL_ValidateSoundName( m_ls.sUnlockedSound, DEFAULT_DOOR_ROTATING_UNLOCKED_NOISE );
 
 	enginesound->PrecacheSound(STRING(m_SoundMoving));
 	enginesound->PrecacheSound(STRING(m_SoundOpen));
@@ -1883,7 +1957,7 @@ void CBasePropDoor::UpdateAreaPortals(bool isOpen)
 		return;
 	
 	CBaseEntity *pPortal = NULL;
-	while (pPortal = gEntList.FindEntityByClassname(pPortal, "func_areaportal"))
+	while ((pPortal = gEntList.FindEntityByClassname(pPortal, "func_areaportal")) != NULL)
 	{
 		if (pPortal->HasTarget(name))
 		{
@@ -2343,10 +2417,15 @@ private:
 
 	void AngularMove(const QAngle &vecDestAngle, float flSpeed);
 
+	// VXP
+	void	CalcOpenAngles ( void );		// Subroutine to setup the m_angRotation QAngles based on the m_flDistance variable
+
 	Vector m_vecAxis;				// The axis of rotation.
 	float m_flDistance;				// How many degrees we rotate between open and closed.
 	QAngle m_angRotationClosed;		// Our angles when we are fully closed.
-	QAngle m_angRotationOpen;		// Our angles when we are fully open.
+//	QAngle m_angRotationOpen;		// Our angles when we are fully open.
+	QAngle	m_angRotationOpenForward;	// Our angles when we are fully open towards our forward vector.
+	QAngle	m_angRotationOpenBack;		// Our angles when we are fully open away from our forward vector.
 
 	QAngle m_angGoal;
 
@@ -2357,7 +2436,9 @@ BEGIN_DATADESC(CPropDoorRotating)
 	DEFINE_KEYFIELD(CPropDoorRotating, m_vecAxis, FIELD_VECTOR, "axis"),
 	DEFINE_KEYFIELD(CPropDoorRotating, m_flDistance, FIELD_FLOAT, "distance"),
 	DEFINE_FIELD( CPropDoorRotating, m_angRotationClosed, FIELD_VECTOR ),
-	DEFINE_FIELD( CPropDoorRotating, m_angRotationOpen, FIELD_VECTOR ),
+//	DEFINE_FIELD( CPropDoorRotating, m_angRotationOpen, FIELD_VECTOR ),
+	DEFINE_FIELD( CPropDoorRotating, m_angRotationOpenForward, FIELD_VECTOR ),
+	DEFINE_FIELD( CPropDoorRotating, m_angRotationOpenBack, FIELD_VECTOR ),
 	DEFINE_FIELD( CPropDoorRotating, m_angGoal, FIELD_VECTOR ),
 END_DATADESC()
 
@@ -2372,28 +2453,50 @@ void CPropDoorRotating::Spawn()
 
 	// The axis of rotation must be axial for now.
 	// dvs: TODO: finalize data definition of hinge axis
-	// HACK: convert the axis of rotation to dPitch dYaw dRoll
 	m_vecAxis = Vector(0, 0, 1);
 	VectorNormalize(m_vecAxis);
 	ASSERT((m_vecAxis.x == 0 && m_vecAxis.y == 0) ||
 			(m_vecAxis.y == 0 && m_vecAxis.z == 0) ||
 			(m_vecAxis.z == 0 && m_vecAxis.x == 0));
-	Vector vecMoveDir(m_vecAxis.y, m_vecAxis.z, m_vecAxis.x);
 
-	if (m_flDistance == 0)
-	{
-		m_flDistance = 90;
-	}
-
-	// Calculate our orientation when we are fully open.
-	m_angRotationOpen.x = m_angRotationClosed.x + (vecMoveDir.x * m_flDistance);
-	m_angRotationOpen.y = m_angRotationClosed.y + (vecMoveDir.y * m_flDistance);
-	m_angRotationOpen.z = m_angRotationClosed.z + (vecMoveDir.z * m_flDistance);
+	CalcOpenAngles();
 
 	SetLocalAngularVelocity(QAngle(0, 100, 0));
 
 	// Call this last! It relies on stuff we calculated above.
 	BaseClass::Spawn();
+
+	// VXP: We have to call this after we call the base Spawn because it requires
+	// that the model already be set.
+//	if ( IsHingeOnLeft() )
+//	{
+//		swap( m_angRotationOpenForward, m_angRotationOpenBack );
+//	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Setup the m_angRotationOpenForward and m_angRotationOpenBack variables based on
+//			the m_flDistance variable. Also restricts m_flDistance > 0.
+//-----------------------------------------------------------------------------
+void CPropDoorRotating::CalcOpenAngles()
+{
+	// HACK: convert the axis of rotation to dPitch dYaw dRoll
+	Vector vecMoveDir(m_vecAxis.y, m_vecAxis.z, m_vecAxis.x); 
+
+	if (m_flDistance == 0)
+	{
+		m_flDistance = 90;
+	}
+	m_flDistance = fabs(m_flDistance);
+
+	// Calculate our orientation when we are fully open.
+	m_angRotationOpenForward.x = m_angRotationClosed.x - (vecMoveDir.x * m_flDistance);
+	m_angRotationOpenForward.y = m_angRotationClosed.y - (vecMoveDir.y * m_flDistance);
+	m_angRotationOpenForward.z = m_angRotationClosed.z - (vecMoveDir.z * m_flDistance);
+
+	m_angRotationOpenBack.x = m_angRotationClosed.x + (vecMoveDir.x * m_flDistance);
+	m_angRotationOpenBack.y = m_angRotationClosed.y + (vecMoveDir.y * m_flDistance);
+	m_angRotationOpenBack.z = m_angRotationClosed.z + (vecMoveDir.z * m_flDistance);
 }
 
 
@@ -2402,7 +2505,12 @@ void CPropDoorRotating::Spawn()
 //-----------------------------------------------------------------------------
 void CPropDoorRotating::SetDoorOpen()
 {
-	SetLocalAngles(m_angRotationOpen);
+//	SetLocalAngles(m_angRotationOpen);
+	if ( m_angGoal == m_angRotationOpenForward )
+		SetLocalAngles(m_angRotationOpenForward);
+	else if ( m_angGoal == m_angRotationOpenBack )
+		SetLocalAngles(m_angRotationOpenForward);
+
 	m_eDoorState = DOOR_STATE_OPEN;
 
 	// Doesn't relink; that's done in Spawn.
@@ -2471,6 +2579,16 @@ void CPropDoorRotating::AngularMove(const QAngle &vecDestAngle, float flSpeed)
 //-----------------------------------------------------------------------------
 void CPropDoorRotating::BeginOpening()
 {
+	QAngle angOpen;
+	if ( !HasSpawnFlags(SF_DOOR_ROTATE_BACKWARDS) )
+	{
+		angOpen = m_angRotationOpenBack;
+	}
+	else
+	{
+		angOpen = m_angRotationOpenForward;
+	}
+
 	if (m_hActivator != NULL)
 	{
 		// dvs: TODO: two-way doors should use their forward vector to determine open dir
@@ -2489,9 +2607,36 @@ void CPropDoorRotating::BeginOpening()
 		//		sign = -1.0;
 		//	}
 		//}
+
+		// HACK: convert the axis of rotation to dPitch dYaw dRoll
+		Vector vecMoveDir(m_vecAxis.y, m_vecAxis.z, m_vecAxis.x); 
+
+		if ( /*!HasSpawnFlags( SF_DOOR_ONEWAY ) &&*/ vecMoveDir.y ) 		// Y axis rotation, move away from the player
+		{
+			Vector vec = m_hActivator->GetLocalOrigin() - GetLocalOrigin();
+			QAngle angles = m_hActivator->GetLocalAngles();
+			angles.x = 0;
+			angles.z = 0;
+			Vector forward;
+			AngleVectors( angles, &forward );
+			Vector vnext = (m_hActivator->GetLocalOrigin() + (forward * 10)) - GetLocalOrigin();
+			if ( (vec.x*vnext.y - vec.y*vnext.x) < 0 )
+			{
+			//	sign = -1.0;
+				if ( !HasSpawnFlags(SF_DOOR_ROTATE_BACKWARDS) )
+				{
+					angOpen = m_angRotationOpenForward;
+				}
+				else
+				{
+					angOpen = m_angRotationOpenBack;
+				}
+			}
+		}
 	}
 
-	AngularMove(m_angRotationOpen, m_flSpeed);
+//	AngularMove(m_angRotationOpen, m_flSpeed);
+	AngularMove(angOpen, m_flSpeed);
 }
 
 
@@ -2548,7 +2693,7 @@ void CPropDoorRotating::GetNPCOpenData(CAI_BaseNPC *pNPC, opendata_t &opendata)
 float CPropDoorRotating::GetOpenInterval()
 {
 	// set destdelta to the vector needed to move
-	QAngle vecDestDelta = m_angRotationOpen - GetLocalAngles();
+	QAngle vecDestDelta = m_angRotationOpenForward - GetLocalAngles();
 	
 	// divide by speed to get time to reach dest
 	return vecDestDelta.Length() / m_flSpeed;

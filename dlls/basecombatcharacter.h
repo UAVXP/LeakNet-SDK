@@ -207,15 +207,19 @@ public:
 	bool				Weapon_CanSwitchTo(CBaseCombatWeapon *pWeapon);
 	virtual bool		Weapon_SlotOccupied( CBaseCombatWeapon *pWeapon );
 	virtual CBaseCombatWeapon *Weapon_GetSlot( int slot );
+	CBaseCombatWeapon	*Weapon_GetWpnForAmmo( int iAmmoIndex ); // VXP
 
 	//
 	// Catching on fire.
 	//
-	virtual bool			IsOnFire( void ) { return m_bOnFire; }
-	virtual void			Ignite( float flFlameLifetime );
+//	virtual bool			IsOnFire( void ) { return m_bOnFire; }
+//	virtual void			Ignite( float flFlameLifetime );
+//	virtual void			Extinguish() { m_bOnFire = false; }
 
 	virtual bool			AddPlayerItem( CBaseCombatWeapon *pItem ) { return false; }
 	virtual bool			RemovePlayerItem( CBaseCombatWeapon *pItem ) { return false; }
+
+	virtual bool			CanBecomeServerRagdoll( void ) { return true; } // VXP
 
 	// -----------------------
 	// Damage
@@ -239,6 +243,8 @@ public:
 	virtual bool			HasHumanGibs( void );
 	virtual bool			HasAlienGibs( void );
 	virtual bool			ShouldGib( const CTakeDamageInfo &info ) { return false; }	// Always ragdoll, unless specified by the leaf class
+
+	float GetDamageAccumulator() { return m_flDamageAccumulator; }
 
 	// Character killed (only fired once)
 	virtual void			Event_Killed( const CTakeDamageInfo &info );
@@ -324,6 +330,8 @@ public:
 	float				GetNextAttack() const { return m_flNextAttack; }
 	void				SetNextAttack( float flWait ) { m_flNextAttack = flWait; }
 
+	bool				m_bForceServerRagdoll; // VXP
+
 #ifdef TF2_DLL
 public:
 
@@ -385,6 +393,7 @@ private:
 
 	// attack/damage
 	int					m_LastHitGroup;		// the last body region that took damage
+	float				m_flDamageAccumulator;	// so very small amounts of damage do not get lost.
 	float				m_impactEnergyScale;// scale the amount of energy used to calculate damage this ent takes due to physics
 	
 	// Weapon proficiency gets calculated each time an NPC changes his weapon, and then
@@ -417,6 +426,6 @@ inline void	CBaseCombatCharacter::PowerupThink( int iPowerup )						{ return; }
 
 EXTERN_SEND_TABLE(DT_BaseCombatCharacter);
 
-void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore );
+void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore );
 
 #endif // BASECOMBATCHARACTER_H

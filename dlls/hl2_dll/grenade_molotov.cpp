@@ -32,6 +32,7 @@ extern ConVar    sk_plr_dmg_molotov;
 extern ConVar    sk_npc_dmg_molotov;
 ConVar    sk_molotov_radius			( "sk_molotov_radius","0");
 
+//#define MOLOTOV_EXPLOSION			1
 #define MOLOTOV_EXPLOSION_VOLUME	1024
 
 BEGIN_DATADESC( CGrenade_Molotov )
@@ -48,6 +49,8 @@ LINK_ENTITY_TO_CLASS( grenade_molotov, CGrenade_Molotov );
 
 void CGrenade_Molotov::Spawn( void )
 {
+	Precache();
+
 	SetMoveType( MOVETYPE_FLYGRAVITY, MOVECOLLIDE_FLY_BOUNCE );
 	SetSolid( SOLID_BBOX ); 
 
@@ -91,9 +94,10 @@ void CGrenade_Molotov::Spawn( void )
 
 		m_pFireTrail->SetLifetime( 20.0f );
 		
-		int nAttachmentIndex = LookupAttachment( "fire" );
 	//	m_pFireTrail->FollowEntity( entindex(), 2 );
-		m_pFireTrail->FollowEntity( entindex(), nAttachmentIndex );
+
+	//	int nAttachmentIndex = LookupAttachment( "fire" );
+		m_pFireTrail->FollowEntity( entindex(), LookupAttachment( "0" ) );
 	}
 }
 
@@ -183,6 +187,7 @@ void CGrenade_Molotov::Detonate( void )
 	}
 // End Start some fires
 	
+#ifdef MOLOTOV_EXPLOSION
 	CPASFilter filter2( trace.endpos );
 
 	te->Explosion( filter2, 0.0,
@@ -193,17 +198,26 @@ void CGrenade_Molotov::Detonate( void )
 		TE_EXPLFLAG_NOPARTICLES,
 		m_DmgRadius,
 		m_flDamage );
+#endif // MOLOTOV_EXPLOSION
 
 	CBaseEntity *pOwner;
 	pOwner = GetOwnerEntity();
 	SetOwnerEntity( NULL ); // can't traceline attack owner if this is set
 
+#ifdef MOLOTOV_EXPLOSION
 	UTIL_DecalTrace( &trace, "Scorch" );
-
 	UTIL_ScreenShake( GetAbsOrigin(), 25.0, 150.0, 1.0, 750, SHAKE_START );
+#else
+	UTIL_DecalTrace( &trace, "BeerSplash" );
+#endif // MOLOTOV_EXPLOSION
+
 	CSoundEnt::InsertSound ( SOUND_DANGER, GetAbsOrigin(), BASEGRENADE_EXPLOSION_VOLUME, 3.0 );
 
-	RadiusDamage( CTakeDamageInfo( this, pOwner, m_flDamage, DMG_BLAST ), GetAbsOrigin(), m_DmgRadius, CLASS_NONE );
+#ifdef MOLOTOV_EXPLOSION
+	RadiusDamage( CTakeDamageInfo( this, pOwner, m_flDamage, DMG_BLAST ), GetAbsOrigin(), m_DmgRadius, CLASS_NONE, NULL );
+#else
+	RadiusDamage( CTakeDamageInfo( this, pOwner, m_flDamage, DMG_BURN ), GetAbsOrigin(), m_DmgRadius, CLASS_NONE, NULL );
+#endif // MOLOTOV_EXPLOSION
 
 	m_fEffects |= EF_NODRAW;
 	SetAbsVelocity( vec3_origin );

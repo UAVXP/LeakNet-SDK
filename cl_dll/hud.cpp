@@ -176,6 +176,10 @@ hudelement_hidden_t sHudHiddenArray[] =
 	{ "CHudBatteryOld", HIDEHUD_HEALTH | HIDEHUD_NEEDSUIT },
 	{ "CHudAmmoOld", HIDEHUD_HEALTH | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT },
 	{ "CHudSecondaryAmmoOld", HIDEHUD_HEALTH | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT },
+	{ "CHudSuitPowerOld", HIDEHUD_HEALTH | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT },
+
+	// LeakNet elements
+	{ "CHudAR2Mode", HIDEHUD_PLAYERDEAD },
 
 	{ NULL, 0 },
 };
@@ -284,9 +288,11 @@ void CHud::Init( void )
 	{
 		if ( kv->LoadFromFile( filesystem, "scripts/HudLayout.res" ) )
 		{
-			for ( int i = 0; i < m_HudList.Size(); i++ )
+			int numelements = m_HudList.Size();
+			for ( int i = 0; i < numelements; i++ )
 			{
-				vgui::Panel *pPanel = dynamic_cast<vgui::Panel*>(m_HudList[i]);
+				CHudElement *element = m_HudList[i];
+				vgui::Panel *pPanel = dynamic_cast<vgui::Panel*>(element);
 				if ( !pPanel )
 				{
 					Msg( "Non-vgui hud element %s\n", m_HudList[i]->GetName() );
@@ -407,12 +413,12 @@ CHud::~CHud()
 	m_Icons.Purge();
 }
 
-void CHudTexture::DrawSelf( int x, int y, Color& clr ) const
+void CHudTexture::DrawSelf( float x, float y, Color& clr ) const
 {
 	DrawSelf( x, y, Width(), Height(), clr );
 }
 
-void CHudTexture::DrawSelf( int x, int y, int w, int h, Color& clr ) const
+void CHudTexture::DrawSelf( float x, float y, float w, float h, Color& clr ) const
 {
 	if ( textureId == -1 )
 		return;
@@ -423,13 +429,16 @@ void CHudTexture::DrawSelf( int x, int y, int w, int h, Color& clr ) const
 		texCoords[ 0 ], texCoords[ 1 ], texCoords[ 2 ], texCoords[ 3 ] );
 }
 
-void CHudTexture::DrawSelfCropped( int x, int y, int cropx, int cropy, int cropw, int croph, Color& clr ) const
+//void CHudTexture::DrawSelfCropped( float x, float y, float cropx, float cropy, float cropw, float croph, Color& clr ) const
+void CHudTexture::DrawSelfCropped( float x, float y, float width, float height, float cropx, float cropy, float cropw, float croph, Color& clr ) const
 {
 	if ( textureId == -1 )
 		return;
 
-	float fw = (float)Width();
-	float fh = (float)Height();
+//	float fw = (float)Width();
+//	float fh = (float)Height();
+	float fw = width;
+	float fh = height;
 
 	float twidth	= texCoords[ 2 ] - texCoords[ 0 ];
 	float theight	= texCoords[ 3 ] - texCoords[ 1 ];
@@ -558,7 +567,7 @@ void CHud::RefreshHudTextures()
 			continue;
 
 		// Update file
-		strcpy( icon->szTextureFile, tex->szTextureFile );
+		Q_strncpy( icon->szTextureFile, tex->szTextureFile, sizeof( icon->szTextureFile ) );
 		
 		// Update subrect
 		icon->rc = tex->rc;
@@ -611,7 +620,7 @@ CHudElement *CHud::FindElement( const char *pName )
 	}
 
 	DevWarning(1, "Could not find Hud Element: %s\n", pName );
-	assert(0);
+	Assert(0);
 	return NULL;
 }
 
